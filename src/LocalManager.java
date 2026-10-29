@@ -410,7 +410,7 @@ public final class LocalManager implements AutoCloseable {
                 + "li,strong{overflow-wrap:anywhere}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:1rem}"
                 + "article{border:1px solid #bbc6d8;border-radius:.5rem;padding:1rem;overflow-wrap:anywhere}"
                 + "article h2{margin-top:0}.action,#choose{background:#174c9c;color:white;border:0;border-radius:.35rem;"
-                + "padding:.6rem 1rem;text-decoration:none;display:inline-block}.details{margin-left:.5rem}"
+                + "padding:.6rem 1rem;text-decoration:none;display:inline-block;cursor:pointer}.details{margin-left:.5rem}"
                 + ".card-actions{display:flex;align-items:center;gap:.5rem}.card-actions form{margin:0}"
                 + ".notice{background:#edf4f7;padding:1rem;border-radius:.5rem}"
                 + "</style><header><h1>Vibe Toolbox</h1><nav><a href=\"/\">Catalog</a></nav></header><main>"

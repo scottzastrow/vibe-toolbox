@@ -200,6 +200,8 @@ try {
     "Add project is above cards");
   expect(await evaluate('!document.querySelector("main").textContent.includes("**Dates:**")'),
     "technical metadata stays off catalog home");
+  expect(await evaluate('getComputedStyle(document.querySelector("#openStudentWheel")).cursor === "pointer"'),
+    "Student Spin Wheel Open app shows a pointer cursor");
   await click("#openStudentWheel");
   expect(await visible('[role="status"]', "Student Spin Wheel started"), "Open app launches the Java desktop process");
   if (process.platform === "win32") {
