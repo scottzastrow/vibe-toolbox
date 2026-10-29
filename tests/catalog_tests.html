@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Catalog tests</title>
+<h1>Offline catalog tests</h1><pre id="result">RUNNING</pre>
+<iframe id="app" title="Catalog under test" src="../index.html"></iframe>
+<script>
+"use strict";
+document.querySelector("#app").addEventListener("load", () => {
+  let checks = 0;
+  const result = document.querySelector("#result");
+  function expect(condition, label) {
+    if (!condition) throw new Error(label);
+    checks++;
+  }
+  try {
+    const doc = document.querySelector("#app").contentDocument;
+    const search = doc.querySelector("#search"), status = doc.querySelector("#status");
+    const cards = [...doc.querySelectorAll("article")];
+    const visible = () => cards.filter(card => !card.hidden);
+    expect(cards.length >= 1, "at least one record");
+    expect(visible().length === cards.length, "all records initially shown");
+    for (const choice of ["prototype", "keeper", "abandoned", "TBD"])
+      expect([...status.options].some(option => option.value === choice), "status option " + choice);
+    search.value = "CSV Quick Check";
+    search.dispatchEvent(new Event("input"));
+    expect(visible().length === 1 && visible()[0].textContent.includes("CSV Quick Check"), "title search");
+    search.value = "export-import";
+    search.dispatchEvent(new Event("input"));
+    expect(visible().some(card => card.textContent.includes("CSV Quick Check")), "tag search");
+    search.value = "no-such-tool-928374";
+    search.dispatchEvent(new Event("input"));
+    expect(visible().length === 0 && !doc.querySelector("#empty").hidden, "empty search feedback");
+    search.value = "";
+    for (const choice of ["prototype", "keeper", "abandoned", "TBD", ""]) {
+      status.value = choice;
+      status.dispatchEvent(new Event("change"));
+      expect(visible().length === cards.filter(card => !choice || card.dataset.status === choice).length,
+        "status filter " + choice);
+    }
+    // Exercise every status with temporary DOM fixtures; these are not project records.
+    const originalStatuses = cards.map(card => card.dataset.status);
+    for (const choice of ["prototype", "keeper", "abandoned", "TBD"]) {
+      cards[0].dataset.status = choice;
+      status.value = choice;
+      status.dispatchEvent(new Event("change"));
+      expect(!cards[0].hidden, "matching fixture visible " + choice);
+      status.value = choice === "keeper" ? "prototype" : "keeper";
+      status.dispatchEvent(new Event("change"));
+      expect(cards[0].hidden, "nonmatching fixture hidden " + choice);
+    }
+    cards.forEach((card, i) => { card.dataset.status = originalStatuses[i]; });
+    status.value = ""; status.dispatchEvent(new Event("change"));
+    expect(doc.querySelectorAll('script[src],link[rel="stylesheet"],img[src^="http"]').length === 0, "no remote assets");
+    expect([...doc.querySelectorAll("a[href]")].every(a => a.protocol === "file:"), "offline local links");
+    result.textContent = `PASS ${checks} catalog checks (local file, search, all status filters)`;
+  } catch (error) {
+    result.textContent = `FAIL after ${checks} checks: ${error.stack || error}`;
+  }
+});
+</script></html>

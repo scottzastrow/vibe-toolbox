@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Prompt Mixer | Presentation Notes &amp; Rehearsal</title>
+  <style>
+    :root {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #202f3d;
+      background: #f3f5f7;
+      font-size: 16px;
+      --border: #cbd5df;
+      --muted: #526577;
+      --running: #fff1b8;
+      --completed: #fce0df;
+      --selected: #e4e8ed;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button, .import-label {
+      border: 1px solid #a9bac9; border-radius: 7px; padding: 9px 14px;
+      color: #20374b; background: white; font-weight: 600;
+    }
+    button:hover, .import-label:hover { background: #edf4f7; }
+    button:disabled { cursor: default; opacity: .55; }
+    :focus-visible { outline: 3px solid #007b94; outline-offset: 3px; }
+    header { background: #182e40; color: #fff; padding: 30px max(24px, calc((100vw - 1500px) / 2)); }
+    .eyebrow { color: #a4dce0; font-size: .75rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 9px 0; font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 650; letter-spacing: -.035em; }
+    header p { color: #c9d6e0; margin: 0; line-height: 1.6; }
+    main { max-width: 1548px; padding: 22px 24px 45px; margin: auto; }
+    .dashboard {
+      position: sticky; top: 0; z-index: 2; background: #f3f5f7;
+      padding: 12px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch;
+    }
+    .clock { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; min-width: 225px; }
+    .clock-label { display: block; color: var(--muted); font-size: .8rem; font-weight: 650; }
+    .digits { font-variant-numeric: tabular-nums; font-size: 2.1rem; font-weight: 700; letter-spacing: -.03em; }
+    .clock-detail { display: block; font-size: .8rem; color: var(--muted); margin-top: 2px; max-width: 390px; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    #pause { background: #126a75; border-color: #126a75; color: white; }
+    #pause:disabled { background: #526577; }
+    .help { line-height: 1.6; color: var(--muted); font-size: .9rem; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0; font-size: .83rem; color: #354c60; }
+    .swatch { display: inline-block; width: 11px; height: 11px; border: 1px solid #8995a1; border-radius: 3px; margin-right: 6px; }
+    .running-swatch { background: var(--running); }
+    .completed-swatch { background: var(--completed); }
+    .selected-swatch { background: var(--selected); }
+    .backup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0 22px; }
+    .backup button, .import-label { font-size: .85rem; padding: 7px 11px; }
+    .import-label { cursor: pointer; }
+    .file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .import-label:has(input:focus-visible) { outline: 3px solid #007b94; outline-offset: 3px; }
+    #storage-status { color: var(--muted); font-size: .8rem; }
+    #notice { color: #8a2222; font-size: .9rem; }
+    #notice:empty { display: none; }
+    .grid-head, .entry { display: grid; grid-template-columns: 125px 220px minmax(0, 1fr) 125px; }
+    .grid-head { padding: 0 18px 10px; color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .grid-head > :last-child { text-align: right; }
+    .section { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: white; margin-bottom: 20px; box-shadow: 0 3px 10px #20374b05; }
+    .entry { padding: 22px 18px; gap: 0; transition: background-color .15s; }
+    .entry + .entry { border-top: 1px solid var(--border); }
+    .entry.child { margin-left: 24px; border-left: 1px solid var(--border); padding-left: 17px; }
+    .section.section-selected { background: var(--selected); }
+    .entry[data-state="running"] { background: var(--running); }
+    .entry[data-state="completed"] { background: var(--completed); }
+    .entry[data-state="selected"], .entry[data-state="paused"] { background: var(--selected); }
+    .section.all-completed { background: var(--completed); border-color: #dbaba9; }
+    .section.all-completed .entry { background: var(--completed); }
+    .schedule { font-weight: 700; font-size: .95rem; font-variant-numeric: tabular-nums; padding: 8px 10px 0 0; }
+    .section-number { display: block; color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .09em; margin-bottom: 6px; }
+    .slide-fields { padding: 0 22px 0 0; cursor: default; }
+    .slide-reference { display: block; margin-bottom: 9px; }
+    .slide-label { display: block; font-size: .75rem; font-weight: 600; color: var(--muted); }
+    .slide-value { display: block; margin-top: 4px; color: #202f3d; font-size: .95rem; line-height: 1.4; overflow-wrap: anywhere; }
+    .notes-column { min-width: 0; }
+    .entry-title { border: 0; padding: 2px 0 5px; margin: 0; background: transparent; text-align: left; font-weight: 700; font-size: 1.08rem; line-height: 1.4; }
+    .entry-title:hover { background: transparent; text-decoration: underline; text-underline-offset: 4px; }
+    .child .entry-title { font-size: 1rem; }
+    .state { display: block; font-size: .76rem; font-weight: 650; color: #485c6c; margin: 3px 0 10px; }
+    .notes { color: #263e50; line-height: 1.65; font-size: .97rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .presenter-direction { color: #064e8a; }
+    .terminal-command { color: #064e8a; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-weight: 700; }
+    .duration { text-align: right; padding-left: 12px; font-size: .9rem; font-weight: 650; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    .budget-label { display: block; color: var(--muted); font-size: .75rem; font-weight: 400; margin-top: 7px; }
+    footer { font-size: .82rem; color: var(--muted); line-height: 1.7; }
+    @media (max-width: 1000px) {
+      .grid-head, .entry { grid-template-columns: 105px 165px minmax(0, 1fr) 100px; }
+      .slide-fields { padding-right: 15px; }
+      main { padding: 14px; }
+    }
+    @media (max-width: 700px) {
+      .dashboard { position: static; }
+      .clock { flex: 1; min-width: 150px; padding: 10px 12px; }
+      .grid-head { display: none; }
+      .entry { grid-template-columns: 1fr 110px; padding: 18px; }
+      .entry.child { margin-left: 12px; }
+      .schedule { grid-column: 1; grid-row: 1; margin-bottom: 12px; }
+      .section-number { display: inline; margin-right: 8px; }
+      .duration { grid-column: 2; grid-row: 1; }
+      .slide-fields { grid-column: 1 / -1; grid-row: 2; display: flex; gap: 12px; padding: 0; }
+      .slide-reference { flex: 1; min-width: 0; }
+      .notes-column { grid-column: 1 / -1; grid-row: 3; }
+      .child .schedule { display: none; }
+    }
+    @media print {
+      header { background: white; color: black; padding: 0 24px; }
+      header p, .eyebrow { color: #354c60; }
+      .dashboard, .backup, .legend, .help, #notice { display: none; }
+      .section { break-inside: avoid; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Presenter workspace / offline rehearsal</div>
+    <h1>Prompt Mixer</h1>
+    <p>Presentation notes &amp; rehearsal timer &nbsp; / &nbsp; Planned duration: <strong>6 min 30 sec</strong></p>
+  </header>
+  <main>
+    <div class="dashboard" aria-label="Rehearsal clocks and controls">
+      <div class="clock">
+        <span class="clock-label">Actual presentation elapsed</span>
+        <span class="digits" id="elapsed">0:00</span>
+        <span class="clock-detail" id="elapsed-state">Not started</span>
+      </div>
+      <div class="clock">
+        <span class="clock-label">Selected entry countdown</span>
+        <span class="digits" id="countdown">--:--</span>
+        <span class="clock-detail" id="countdown-state">Idle - select an entry to begin</span>
+      </div>
+      <div class="controls">
+        <button id="pause" disabled>Pause both clocks</button>
+        <button id="reset">Reset All</button>
+      </div>
+    </div>
+    <p class="help">Click an entry heading or an empty row area to select it. Timed entries start or resume; parent sections only select.
+      Nothing advances automatically. Notes and slide references are presentation text; import a backup to replace them.
+      Overall times are planned, not actual.</p>
+    <div class="legend" aria-label="Timer state legend">
+      <span><i class="swatch running-swatch"></i>Yellow: running</span>
+      <span><i class="swatch selected-swatch"></i>Gray: selected section / paused</span>
+      <span><i class="swatch completed-swatch"></i>Light red: completed</span>
+      <span>Not started / stopped: time preserved; bold entry times show the countdown</span>
+    </div>
+    <div class="backup">
+      <button id="export">Export notes &amp; slides</button>
+      <label class="import-label">Import notes &amp; slides
+        <input class="file-input" id="import" type="file" accept=".json,application/json">
+      </label>
+      <span id="storage-status" role="status">Checking local storage...</span>
+    </div>
+    <p id="notice" role="alert"></p>
+    <div class="grid-head" aria-hidden="true">
+      <span>Overall time</span><span>Slide reference</span><span>Speaking notes &amp; demo actions</span><span>Duration</span>
+    </div>
+    <div id="sections"></div>
+    <footer>
+      Notes and slide references are saved locally when storage is available. Export a backup before moving or replacing this file:
+      browser storage for local files varies by browser. Imports replace notes and slide references only, not timer states.
+      Timer progress is session-only; reloading starts a fresh rehearsal. Reset All preserves notes and slide references.
+      No network access is used.
+    </footer>
+  </main>
+  <script>
+    "use strict";
+    const testDemoInstructions = "Live demo — run tests in Lightsail:\ncd /opt/promptmixer-app\nnpm test";
+    const terminalCommands = new Set([
+      "sudo journalctl -u promptmixer -f -n 0 -o cat",
+      "cd /opt/promptmixer-app",
+      "npm test"
+    ]);
+    const presenterDirectionPatterns = [
+      /^(?:Purpose|SpecKit|Ask|Presenter reminder|Slide reminder|Explain|Highlight|Point out|Mention|Close|Live-logging command):/,
+      /^(?:Show|Click|Allow|Switch to|Briefly mention|Discuss|Ctrl\+C|Explain that)\b/,
+      /^(?:If nobody answers:|If generation takes longer|These excerpts come from)/,
+      /^- /
+    ];
+    const slideMap = {
+      purpose: { slideNumber: "1", slideTitle: "Prompt Mixer: Purpose and SpecKit" },
+      audience: { slideNumber: "2", slideTitle: "Should we launch on Friday?" },
+      demo: { slideNumber: "3", slideTitle: "Cumulative prompt comparison" },
+      "demo-a": { slideNumber: "4", slideTitle: "Launch Decision preset" },
+      "demo-b": { slideNumber: "5", slideTitle: "Full stack and live logging" },
+      "demo-c": { slideNumber: "6", slideTitle: "Raw: A broad launch checklist" },
+      "demo-d": { slideNumber: "7", slideTitle: "Context: Five classmates" },
+      "demo-e": { slideNumber: "8", slideTitle: "Role: A cautious release engineer" },
+      "demo-f": { slideNumber: "9", slideTitle: "Constraints: Three short bullets" },
+      "demo-g": { slideNumber: "10", slideTitle: "Human judgment still matters" },
+      testing: { slideNumber: "11", slideTitle: "Testing and lessons" },
+      "testing-a": { slideNumber: "12", slideTitle: "38 automated tests passed" },
+      "testing-b": { slideNumber: "13", slideTitle: "Usability changed the interface" },
+      "testing-c": { slideNumber: "14", slideTitle: "Logs explained the missing answer" },
+      "testing-d": { slideNumber: "15", slideTitle: "Human verification" },
+      reflection: { slideNumber: "16", slideTitle: "Reflection and remaining gaps" }
+    };
+    const sections = [
+      {
+        id: "purpose", title: "Purpose and SpecKit", seconds: 45,
+        notes: `Purpose:
+"Prompt Mixer demonstrates how adding context, a role and constraints changes an AI response. It builds cumulative prompts so we can compare the results at each step."
+
+SpecKit:
+"SPEC.md defines what Prompt Mixer should do, PLAN.md describes how we'll build it, and TASKS.md breaks the work into trackable steps. Together, they helped me keep requirements clear while adapting the app as testing revealed improvements."
+
+Slide reminder: keep this SpecKit explanation on the corresponding PowerPoint slide.`
+      },
+      {
+        id: "audience", title: "Audience question", seconds: 30,
+        notes: `Ask:
+"What information is missing before you could answer:
+Should we launch on Friday?"
+
+Allow one brief response. If nobody answers:
+"For me, the first question is: who's going to use it?"
+
+Explain that the comparison is cumulative. We add to the previous prompt rather than testing each field independently.`
+      },
+      {
+        id: "demo", title: "Prompt demo", seconds: 165,
+        notes: `Presenter reminder:
+These excerpts come from one observed run. Responses can vary.
+If generation takes longer than expected, use the prepared PowerPoint screenshots rather than rushing or waiting indefinitely.`,
+        children: [
+          {
+            id: "demo-a", title: "A. Select Launch Decision and start generation", seconds: 15,
+            notes: `Show the populated fields, selected checkboxes and combined preview.
+Click Generate Response.`
+          },
+          {
+            id: "demo-b", title: "B. Explain the stack and show live logs while generating", seconds: 30,
+            notes: `Bluehost provides DNS and the MySQL database.
+AWS Lightsail runs Nginx and the private Node service.
+Nginx handles HTTPS. Node validates and limits requests before calling OpenAI. The API key stays on the server.
+
+Switch to the terminal and show matching request IDs, outcome, duration and token usage.
+
+Live-logging command:
+sudo journalctl -u promptmixer -f -n 0 -o cat
+
+Explain:
+"The systemd journal stores operational events according to its retention settings. This command watches new entries as they arrive. MySQL separately stores successful prompts and AI responses."
+
+Operational logs exclude conversation content and secrets.
+Ctrl+C stops watching without stopping the app.`
+          },
+          {
+            id: "demo-c", title: "C. Raw response", seconds: 25,
+            notes: `"Without context, it gives a broad launch checklist involving marketing, support teams and on-call staff."`
+          },
+          {
+            id: "demo-d", title: "D. Add context", seconds: 25,
+            notes: `"Now it knows this is five classmates. Its advice centers on the broken password reset and practical workarounds."`
+          },
+          {
+            id: "demo-e", title: "E. Add role", seconds: 25,
+            notes: `Highlight the observed opening:
+"Yes for a limited, invite-only classroom demo; No for any public launch."
+
+"The cautious release engineer framing makes the distinction explicit. The role field also directly asks it to distinguish a demo from a public launch."`
+          },
+          {
+            id: "demo-f", title: "F. Add constraints", seconds: 25,
+            notes: `Show the complete three-bullet answer.
+
+"The same decision is now delivered in the format and length I requested: Decision, Biggest risk and Required safeguard, with a maximum of 45 English words."`
+          },
+          {
+            id: "demo-g", title: "G. Judgment and extra features", seconds: 20,
+            notes: `"The question stayed the same. What changed was the information, perspective and boundaries we supplied."
+
+Point out:
+"The final answer says password reset could lock out all attendees. That overstates what we supplied. Better prompting improves direction; it doesn't eliminate the need for judgment."
+
+Briefly mention optional follow-ups, PDF export and English/Japanese support. PDF export uses existing responses without another AI call.`
+          }
+        ]
+      },
+      {
+        id: "testing", title: "Testing and lessons", seconds: 90,
+        notes: "Discuss the verified results and lessons below. Do not claim completed security audits or other testing results beyond those documented here.",
+        children: [
+          {
+            id: "testing-a", title: "A. Automated tests and coverage", seconds: 20,
+            notes: `"After the preset update, 38 automated tests passed. Coverage includes input validation, cumulative comparisons, language behavior, request limits and structured logging."\n\n${testDemoInstructions}`
+          },
+          {
+            id: "testing-b", title: "B. Usability", seconds: 20,
+            notes: `"The original checkboxes and Show Mix button confused users. Feedback led us to replace that extra step with an automatic preview."`
+          },
+          {
+            id: "testing-c", title: "C. Token diagnostics", seconds: 25,
+            notes: `"An earlier response consumed its entire output-token budget on reasoning and returned no answer text. Logs exposed the cause. We adjusted the token budget and reasoning effort, then verified the behavior."`
+          },
+          {
+            id: "testing-d", title: "D. Human verification", seconds: 25,
+            notes: `"AI helped write the code, but I still needed to test behavior, review changes and judge the results. Passing tests and confident answers don't remove that responsibility."`
+          }
+        ]
+      },
+      {
+        id: "reflection", title: "Reflection and remaining gaps", seconds: 60,
+        notes: `"Working code is one part of a working application. Deployment made cost, access controls and reliability concrete. SpecKit helped me organize changes, and logging helped turn vague failures into evidence."
+
+Mention:
+- Language support includes the interface, presets, errors and PDFs.
+- Request limits reduce usage but are not a guaranteed dollar cap.
+- A comparison can make up to four AI requests, and follow-ups count too.
+- AI responses still require human judgment.
+- The experimental MCP bridge remains outside this presentation's scope.
+
+Close:
+"This project taught me how to use AI as a development collaborator while remaining responsible for the decisions and the finished app."`
+      }
+    ];
+
+    const entries = sections.flatMap(section => [section, ...(section.children || [])]);
+    const entryById = new Map(entries.map(entry => [entry.id, entry]));
+    const states = new Map(entries.filter(entry => !entry.children).map(entry =>
+      [entry.id, { remaining: entry.seconds * 1000, completed: false, started: false }]));
+    const elements = new Map();
+    const storageKey = "prompt-mixer-presentation-edits-v1";
+    const storageStatus = document.getElementById("storage-status");
+    const notice = document.getElementById("notice");
+    const pauseButton = document.getElementById("pause");
+    let selectedId = null;
+    let activeId = null;
+    let activeSince = null;
+    let elapsedSaved = 0;
+    let elapsedSince = null;
+    let presentationStarted = false;
+    let paused = false;
+
+    function duration(seconds) {
+      const minutes = Math.floor(seconds / 60);
+      const rest = seconds % 60;
+      return [minutes ? `${minutes} min` : "", rest ? `${rest} sec` : ""].filter(Boolean).join(" ") || "0 sec";
+    }
+    function clock(milliseconds, roundUp = false) {
+      const seconds = Math.max(0, (roundUp ? Math.ceil : Math.floor)(milliseconds / 1000));
+      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    }
+    function isComplete(entry) {
+      return entry.children ? entry.children.every(child => states.get(child.id).completed) : states.get(entry.id).completed;
+    }
+    function remainingAt(id, now) {
+      const state = states.get(id);
+      return Math.max(0, state.remaining - (activeId === id && activeSince !== null ? now - activeSince : 0));
+    }
+    function sync(now) {
+      if (activeId !== null && activeSince !== null) {
+        const state = states.get(activeId);
+        state.remaining = remainingAt(activeId, now);
+        activeSince = now;
+        if (state.remaining === 0) {
+          state.completed = true;
+          activeId = null;
+          activeSince = null;
+        }
+      }
+    }
+    function stopEntry(now) {
+      sync(now);
+      activeId = null;
+      activeSince = null;
+    }
+    function selectEntry(id) {
+      const now = performance.now();
+      stopEntry(now);
+      selectedId = id;
+      const entry = entryById.get(id);
+      if (!entry.children && !isComplete(entry)) {
+        const state = states.get(id);
+        state.started = true;
+        activeId = id;
+        activeSince = paused ? null : now;
+        if (!presentationStarted) {
+          presentationStarted = true;
+          elapsedSince = paused ? null : now;
+        }
+      }
+      render(now);
+    }
+    function stateLabel(entry) {
+      if (isComplete(entry)) return "Completed";
+      if (entry.children) {
+        const completed = entry.children.filter(child => isComplete(child)).length;
+        return `${isSectionSelected(entry) ? "Selected section - " : ""}Parent section (no countdown) - ${completed}/${entry.children.length} completed`;
+      }
+      if (activeId === entry.id) return paused ? "Paused - resume both clocks to continue" : "Running";
+      return states.get(entry.id).started ? "Stopped - click to resume remaining time" : "Not started - click to start";
+    }
+    function isSectionSelected(entry) {
+      return selectedId === entry.id || entry.children.some(child => child.id === selectedId);
+    }
+    function renderNotes(element, text) {
+      const lines = text.split("\n");
+      lines.forEach((line, index) => {
+        if (index > 0) element.append(document.createTextNode("\n"));
+        if (terminalCommands.has(line)) {
+          const command = document.createElement("code");
+          command.className = "terminal-command";
+          command.textContent = line;
+          element.append(command);
+        } else if (presenterDirectionPatterns.some(pattern => pattern.test(line))) {
+          const direction = document.createElement("span");
+          direction.className = "presenter-direction";
+          direction.textContent = line;
+          element.append(direction);
+        } else {
+          element.append(document.createTextNode(line));
+        }
+      });
+    }
+    function ensureTestDemoInstructions(text) {
+      if (text.includes(testDemoInstructions)) return text;
+      const separator = text.length === 0 || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
+      return `${text}${separator}${testDemoInstructions}`;
+    }
+    function render(now = performance.now()) {
+      sync(now);
+      document.getElementById("elapsed").textContent = clock(elapsedSaved + (elapsedSince !== null ? now - elapsedSince : 0));
+      document.getElementById("elapsed-state").textContent = !presentationStarted ? "Not started" :
+        paused ? "Paused" : "Running - includes gaps between entries";
+      pauseButton.disabled = !presentationStarted;
+      pauseButton.textContent = paused ? "Resume both clocks" : "Pause both clocks";
+      const selected = entryById.get(selectedId);
+      document.getElementById("countdown").textContent = selected && !selected.children ? clock(remainingAt(selected.id, now), true) : "--:--";
+      document.getElementById("countdown-state").textContent = selected ? `${selected.title} | ${stateLabel(selected)}` : "Idle - select an entry to begin";
+      for (const entry of entries) {
+        const el = elements.get(entry.id);
+        const status = isComplete(entry) ? "completed" :
+          activeId === entry.id ? (paused ? "paused" : "running") :
+          entry.children && isSectionSelected(entry) ? "selected" : "idle";
+        el.row.dataset.state = status;
+        el.state.textContent = stateLabel(entry);
+        el.button.setAttribute("aria-pressed", String(selectedId === entry.id));
+        if (!entry.children) el.time.textContent = duration(Math.ceil(remainingAt(entry.id, now) / 1000));
+        if (entry.children) {
+          el.row.parentElement.classList.toggle("section-selected", isSectionSelected(entry));
+          el.row.parentElement.classList.toggle("all-completed", isComplete(entry));
+        }
+      }
+    }
+    function createEntry(entry, sectionIndex, start, child = false) {
+      const row = document.createElement("div");
+      row.className = `entry${child ? " child" : ""}`;
+      row.dataset.id = entry.id;
+      const schedule = document.createElement("div");
+      schedule.className = "schedule";
+      if (!child) {
+        const number = document.createElement("span");
+        number.className = "section-number";
+        number.textContent = `Section ${sectionIndex + 1}`;
+        schedule.append(number, `${clock(start * 1000)} - ${clock((start + entry.seconds) * 1000)}`);
+      }
+      const slides = document.createElement("div");
+      slides.className = "slide-fields";
+      const slideReference = slideMap[entry.id];
+      if (!slideReference) throw new Error(`Missing slide reference for "${entry.id}".`);
+      for (const [field, labelText] of [["slideNumber", "Slide number"], ["slideTitle", "Slide title"]]) {
+        const reference = document.createElement("div");
+        reference.className = "slide-reference";
+        const label = document.createElement("span");
+        label.className = "slide-label";
+        label.textContent = labelText;
+        const value = document.createElement("span");
+        value.className = "slide-value";
+        value.dataset.field = field;
+        value.textContent = slideReference[field];
+        value.setAttribute("aria-label", `${entry.title}: ${labelText}`);
+        reference.append(label, value);
+        slides.append(reference);
+      }
+      const notesColumn = document.createElement("div");
+      notesColumn.className = "notes-column";
+      const button = document.createElement("button");
+      button.className = "entry-title";
+      button.textContent = `${child ? "" : `${sectionIndex + 1}. `}${entry.title}`;
+      button.addEventListener("click", () => selectEntry(entry.id));
+      const state = document.createElement("span");
+      state.className = "state";
+      const notes = document.createElement("div");
+      notes.className = "notes";
+      notes.dataset.field = "notes";
+      renderNotes(notes, entry.notes);
+      notes.setAttribute("role", "note");
+      notes.setAttribute("aria-label", `${entry.title}: speaking notes and demo actions`);
+      notesColumn.append(button, state, notes);
+      const time = document.createElement("div");
+      time.className = "duration";
+      time.textContent = duration(entry.seconds);
+      if (entry.children) {
+        const budgetLabel = document.createElement("span");
+        budgetLabel.className = "budget-label";
+        budgetLabel.textContent = "Section budget";
+        time.append(budgetLabel);
+      }
+      row.append(schedule, slides, notesColumn, time);
+      row.addEventListener("click", event => {
+        if (!event.target.closest("button, .notes, .slide-reference, .state, .schedule, .duration, a")) {
+          selectEntry(entry.id);
+        }
+      });
+      elements.set(entry.id, { row, state, button, time, notes });
+      return row;
+    }
+    let start = 0;
+    sections.forEach((section, index) => {
+      const container = document.createElement("section");
+      container.className = "section";
+      container.setAttribute("aria-label", section.title);
+      container.append(createEntry(section, index, start));
+      for (const child of section.children || []) container.append(createEntry(child, index, start, true));
+      document.getElementById("sections").append(container);
+      start += section.seconds;
+    });
+
+    function collectEdits() {
+      return {
+        version: 1,
+        entries: Object.fromEntries(entries.map(entry => {
+          const row = elements.get(entry.id).row;
+          return [entry.id, Object.fromEntries(["notes", "slideNumber", "slideTitle"].map(field =>
+              [field, field === "notes"
+                ? row.querySelector(`[data-field="${field}"]`).textContent
+                : slideMap[entry.id][field]]))];
+        }))
+      };
+    }
+    function validateEdits(data) {
+      if (!data || data.version !== 1 || !data.entries || typeof data.entries !== "object" ||
+          Object.keys(data.entries).length !== entries.length) {
+        throw new Error("The file is not a complete Prompt Mixer notes backup (version 1).");
+      }
+      for (const entry of entries) {
+        const value = data.entries[entry.id];
+        if (!value || ["notes", "slideNumber", "slideTitle"].some(field => typeof value[field] !== "string")) {
+          throw new Error(`Missing or invalid notes or slide references for "${entry.title}".`);
+        }
+      }
+      return data;
+    }
+    function applyEdits(data) {
+      for (const entry of entries) {
+        const row = elements.get(entry.id).row;
+        const value = entry.id === "testing-a"
+          ? ensureTestDemoInstructions(data.entries[entry.id].notes)
+          : data.entries[entry.id].notes;
+        const element = row.querySelector('[data-field="notes"]');
+        element.replaceChildren();
+        renderNotes(element, value);
+      }
+    }
+    function saveEdits() {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(collectEdits()));
+        storageStatus.textContent = "Notes and slide references saved locally.";
+      } catch (error) {
+        storageStatus.textContent = "Local saving unavailable. Use Export to keep your notes and slide references.";
+      }
+    }
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) applyEdits(validateEdits(JSON.parse(saved)));
+      storageStatus.textContent = saved ? "Saved notes and slide references restored." : "Ready to save notes and slide references locally.";
+    } catch (error) {
+      storageStatus.textContent = "Saved notes and slide references unavailable. Use Export to keep a backup.";
+      notice.textContent = `Could not load saved notes and slide references: ${error.message}`;
+    }
+    document.getElementById("export").addEventListener("click", () => {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(collectEdits(), null, 2)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "prompt-mixer-notes.json";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    document.getElementById("import").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      notice.textContent = "";
+      try {
+        const data = validateEdits(JSON.parse(await file.text()));
+        if (confirm("Replace all notes and slide references with this backup? Timer states will not change.")) {
+          applyEdits(data);
+          saveEdits();
+        }
+      } catch (error) {
+        notice.textContent = `Import failed. No notes or slide references were changed: ${error.message}`;
+      } finally {
+        event.target.value = "";
+      }
+    });
+    pauseButton.addEventListener("click", () => {
+      const now = performance.now();
+      sync(now);
+      if (!presentationStarted) return;
+      if (!paused) {
+        elapsedSaved += now - elapsedSince;
+        elapsedSince = null;
+        activeSince = null;
+        paused = true;
+      } else {
+        elapsedSince = now;
+        activeSince = activeId !== null ? now : null;
+        paused = false;
+      }
+      render(now);
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      selectedId = null;
+      activeId = null;
+      activeSince = null;
+      elapsedSaved = 0;
+      elapsedSince = null;
+      presentationStarted = false;
+      paused = false;
+      for (const [id, state] of states) {
+        state.remaining = entryById.get(id).seconds * 1000;
+        state.completed = false;
+        state.started = false;
+      }
+      render();
+    });
+    document.addEventListener("visibilitychange", () => render());
+    window.addEventListener("pageshow", () => render());
+    render();
+    setInterval(render, 100);
+  </script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSV Quick Check</title>
+<style>
+body{font:1rem system-ui;line-height:1.55;max-width:52rem;margin:2rem auto;padding:0 1rem;background:#f4f6fa;color:#17233b}
+main{background:white;border:1px solid #bbc6d8;border-radius:.6rem;padding:1.4rem}
+button,input,textarea{font:inherit} button{padding:.5rem 1rem;cursor:pointer}
+button:disabled{cursor:not-allowed}
+textarea{display:block;width:100%;box-sizing:border-box;margin:.5rem 0;min-height:8rem}
+input{max-width:100%} dt{font-weight:bold} dd{margin-bottom:.4rem}
+#result{border-left:4px solid #3566a0;padding-left:1rem;overflow-wrap:anywhere}
+.error{color:#932124} a{color:#174c9c} [hidden]{display:none}
+</style>
+</head>
+<body><main>
+<h1>CSV Quick Check</h1>
+<p>Inspect comma-delimited CSV contents, not just the filename. Files and pasted text
+stay in this browser: no upload, telemetry, or remote assets.</p>
+<p>Inspired by classmate Ezana Asfaw's presentation about checking file contents
+rather than trusting the extension. This is an independently built utility.</p>
+<label for="file">Choose a UTF-8 file (any extension)</label>
+<input id="file" type="file">
+<p id="filename" aria-live="polite" style="overflow-wrap:anywhere">No file selected.</p>
+<button id="checkFile" type="button" disabled>Check file</button>
+<p>Or paste CSV:</p>
+<label for="csv">CSV text</label>
+<textarea id="csv" spellcheck="false" placeholder="name,score&#10;Alex,10"></textarea>
+<button id="analyze" type="button">Check pasted text</button>
+<section id="result" aria-live="polite" aria-busy="false">
+<h2>Results</h2><p id="message">Choose a file and click Check file, or check pasted text.</p>
+<dl id="totals" hidden>
+<dt>Data rows (excluding header)</dt><dd id="rows"></dd>
+<dt>Columns (from header)</dt><dd id="columns"></dd>
+<dt>Blank data cells (empty or whitespace-only)</dt><dd id="blankCells"></dd>
+<dt>Duplicate data rows (extra occurrences)</dt><dd id="duplicateRows"></dd>
+</dl><ul id="errors" class="error"></ul>
+</section>
+<h2>Supported CSV and counting rules</h2>
+<ul>
+<li>The first non-ignored record is the header and is excluded from all data-row,
+blank-data-cell, and duplicate counts. No header-name validation is performed.</li>
+<li>UTF-8 with an optional BOM, commas, LF or CRLF line endings, quoted fields,
+doubled quote escapes, and embedded commas/newlines in quoted fields are supported.</li>
+<li>Completely empty lines outside quoted fields are ignored. Whitespace-only lines
+are records, not ignored lines. Line breaks inside quotes are preserved.</li>
+<li>Empty or whitespace-only data cells are blank. Cell contents are never trimmed
+or case-folded for duplicate detection. Duplicate rows compare exact parsed cell
+values; each occurrence after the first counts once.</li>
+<li>Ragged rows and malformed quoting are structural errors. Counts are withheld on
+any structural error. Locations use logical records (including header) and physical
+lines (including ignored empty lines). An empty file has zero rows and columns.</li>
+</ul>
+<h2>Limitations</h2>
+<p>No duplicate removal, delimiter guessing, XLSX, alternate encodings, or large-file
+guarantees. Entire input and duplicate keys are kept in memory; large files can
+freeze the tab. Bare CR line endings, quotes in unquoted cells, and spaces after
+a closing quote are unsupported. Valid one-column text is also CSV: passing these
+checks does not prove a file is safe or its values are meaningful.</p>
+<p><a href="README.md">Run instructions and evidence</a> |
+<a href="../../index.html">Vibe Toolbox catalog</a></p>
+</main>
+<script>
+"use strict";
+function analyzeCsv(input) {
+  const text = input.startsWith("\uFEFF") ? input.slice(1) : input;
+  const errors = [], seen = new Set();
+  let state = "start", cell = "", cells = [], started = false;
+  let line = 1, recordLine = 1, record = 0, columns = 0;
+  let rows = 0, blankCells = 0, duplicateRows = 0;
+  function error(message) {
+    return {record: record + 1, line, message};
+  }
+  function finishRecord() {
+    if (!started) return;
+    cells.push(cell);
+    record++;
+    if (record === 1) columns = cells.length;
+    else if (cells.length !== columns) {
+      errors.push({record, line: recordLine,
+        message: `Expected ${columns} columns; found ${cells.length}.`});
+    } else {
+      rows++;
+      blankCells += cells.filter(value => value.trim() === "").length;
+      const key = JSON.stringify(cells);
+      if (seen.has(key)) duplicateRows++;
+      else seen.add(key);
+    }
+    cells = []; cell = ""; state = "start"; started = false;
+  }
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\r" && text[i + 1] !== "\n") {
+      errors.push(error("Bare CR is unsupported; use LF or CRLF."));
+      return {errors, stats: null};
+    }
+    const newline = ch === "\n" || ch === "\r";
+    if (state === "quoted") {
+      if (ch === '"') state = "closed";
+      else if (newline) {
+        cell += ch === "\r" ? "\r\n" : "\n";
+        if (ch === "\r") i++;
+        line++;
+      } else cell += ch;
+      continue;
+    }
+    if (newline) {
+      finishRecord();
+      if (ch === "\r") i++;
+      line++; recordLine = line;
+    } else if (ch === ",") {
+      cells.push(cell); cell = ""; state = "start"; started = true;
+    } else if (ch === '"') {
+      if (state === "start") { state = "quoted"; started = true; }
+      else if (state === "closed") { cell += '"'; state = "quoted"; }
+      else {
+        errors.push(error("Quote inside an unquoted field."));
+        return {errors, stats: null};
+      }
+    } else if (state === "closed") {
+      errors.push(error("Expected comma or line ending after closing quote."));
+      return {errors, stats: null};
+    } else {
+      cell += ch; state = "unquoted"; started = true;
+    }
+  }
+  if (state === "quoted") errors.push(error("Unclosed quoted field."));
+  else finishRecord();
+  return {errors, stats: errors.length ? null : {rows, columns, blankCells, duplicateRows}};
+}
+
+const message = document.querySelector("#message");
+const totals = document.querySelector("#totals");
+const errorsList = document.querySelector("#errors");
+const region = document.querySelector("#result");
+const picker = document.querySelector("#file");
+const checkFile = document.querySelector("#checkFile");
+let request = 0;
+function clearResult(text) {
+  message.textContent = text; totals.hidden = true; errorsList.replaceChildren();
+}
+function showResult(result) {
+  clearResult(result.errors.length ? "Structural errors found. Counts withheld." : "No structural errors found.");
+  for (const error of result.errors) {
+    const item = document.createElement("li");
+    item.textContent = `Record ${error.record}, line ${error.line}: ${error.message}`;
+    errorsList.append(item);
+  }
+  if (result.stats) {
+    totals.hidden = false;
+    for (const [key, value] of Object.entries(result.stats))
+      document.getElementById(key).textContent = String(value);
+  }
+}
+document.querySelector("#analyze").addEventListener("click", () => {
+  request++;
+  region.setAttribute("aria-busy", "false");
+  showResult(analyzeCsv(document.querySelector("#csv").value));
+});
+picker.addEventListener("change", () => {
+  request++;
+  const file = picker.files[0];
+  document.querySelector("#filename").textContent = file ? `Selected file: ${file.name}` : "No file selected.";
+  checkFile.disabled = !file;
+  clearResult(file ? "Click Check file to process the selected file." : "No file selected.");
+  region.setAttribute("aria-busy", "false");
+});
+checkFile.addEventListener("click", async () => {
+  const file = picker.files[0];
+  if (!file) return;
+  const id = ++request;
+  clearResult(`Reading ${file.name} locally...`);
+  region.setAttribute("aria-busy", "true");
+  try {
+    const bytes = await file.arrayBuffer();
+    const text = new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+    if (id === request) showResult(analyzeCsv(text));
+  } catch (error) {
+    if (id === request) clearResult(`Could not read UTF-8 file: ${error.message}`);
+  } finally {
+    if (id === request) region.setAttribute("aria-busy", "false");
+  }
+});
+</script>
+</body></html>

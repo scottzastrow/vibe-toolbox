@@ -1,0 +1,3 @@
+# Preserve supplied artifacts and exact transcript bytes across Git checkouts.
+projects/**/original/** -text whitespace=trailing-space,space-before-tab,cr-at-eol
+**/prompts.md -text whitespace=trailing-space,space-before-tab,cr-at-eol

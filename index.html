@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vibe Toolbox</title>
+<style>
+body{font:1rem system-ui;max-width:65rem;margin:2rem auto;padding:0 1rem;background:#f4f6fa;color:#17233b}
+input,select{font:inherit;padding:.6rem;max-width:100%;margin:.3rem}
+article{background:white;border:1px solid #bbc6d8;border-radius:.5rem;padding:1rem;margin:1rem 0}
+a{color:#174c9c} dt{font-weight:bold} dd{margin-bottom:.5rem;overflow-wrap:anywhere}
+.badge{font-weight:bold} .description{font-size:1.05rem}
+.actions a{display:inline-block;background:#174c9c;color:white;text-decoration:none;
+  padding:.55rem .8rem;border-radius:.35rem;margin-right:.5rem}
+[hidden]{display:none}
+</style>
+<h1>Vibe Toolbox</h1>
+<p><strong>Offline catalog (read-only).</strong> Import projects through the separate
+<a href="README.md#local-browser-management">local management interface</a>.</p>
+<p>Small AI-built apps for classmates, instructors, and future maintainers.
+Generated from project prompts.md records; verification labels are claims to read alongside evidence.</p>
+<p><a href="README.md">Download, run, update and verify</a> |
+<a href="DESIGN.md">Design</a></p>
+<label>Search <input id="search" type="search" placeholder="Title, tags, takeaway..."></label>
+<label>Status <select id="status"><option value="">All statuses</option>
+<option>prototype</option><option>keeper</option><option>abandoned</option>
+<option value="TBD">TBD (unknown)</option></select></label>
+<p id="count" role="status"></p><main>
+<article data-status="prototype"><h2>CSV Quick Check</h2><p class="badge">Status: prototype</p><p class="description">Check local CSV files or pasted CSV text for row and column counts, blank cells, and duplicate rows without uploading data.</p><dl><dt>Dates</dt><dd>2026-10-28 -&gt; 2026-10-28</dd><dt>Defaults</dt><dd>GitHub Copilot; Auto (underlying model TBD)</dd><dt>Reusability</dt><dd>artifact TBD; prompt pattern TBD</dd><dt>Tags</dt><dd>single-file-html, productivity, export-import</dd><dt>Takeaway</dt><dd>Check parsed contents rather than treating a filename extension as evidence.</dd><dt>Story value</dt><dd>TBD</dd><dt>Surprises</dt><dd>TBD</dd><dt>Prompt verification</dt><dd>not-run, agent-tested</dd></dl><p class="actions"><a href="projects/csv_quick_check/csv_quick_check.html">Open app</a></p><p><a href="projects/csv_quick_check/csv_quick_check.html">csv_quick_check.html</a> </p><p><a href="projects/csv_quick_check/README.md">Run, evidence, limitations</a> | <a href="projects/csv_quick_check/prompts.md">Exact history</a></p></article>
+<article data-status="TBD"><h2>Presentation Timer</h2><p class="badge">Status: TBD</p><p class="description">Offline presentation rehearsal with elapsed and per-entry timers, editable notes and slide references, and JSON backup.</p><dl><dt>Dates</dt><dd>TBD</dd><dt>Defaults</dt><dd>TBD</dd><dt>Reusability</dt><dd>TBD</dd><dt>Tags</dt><dd>TBD</dd><dt>Takeaway</dt><dd>TBD</dd><dt>Story value</dt><dd>TBD</dd><dt>Surprises</dt><dd>TBD</dd><dt>Prompt verification</dt><dd>TBD</dd></dl><p class="actions"><a href="projects/presentation_timer/original/index.html">Open app</a></p><p><a href="projects/presentation_timer/original/index.html">original/index.html</a> </p><p><a href="projects/presentation_timer/README.md">Run, evidence, limitations</a> | <a href="projects/presentation_timer/prompts.md">Exact history</a></p></article>
+<article data-status="TBD"><h2>Student Spin Wheel</h2><p class="badge">Status: TBD</p><p class="description">Desktop classroom tool for drawing student names from a wheel, managing eligibility, and reviewing spin history.</p><dl><dt>Dates</dt><dd>TBD</dd><dt>Defaults</dt><dd>TBD</dd><dt>Reusability</dt><dd>TBD</dd><dt>Tags</dt><dd>TBD</dd><dt>Takeaway</dt><dd>TBD</dd><dt>Story value</dt><dd>TBD</dd><dt>Surprises</dt><dd>TBD</dd><dt>Prompt verification</dt><dd>TBD</dd></dl><p class="actions"><a href="projects/student_spin_wheel/README.md">Run instructions</a></p><p><a href="projects/student_spin_wheel/original/.gitignore">original/.gitignore</a> <a href="projects/student_spin_wheel/original/PLAN.md">original/PLAN.md</a> <a href="projects/student_spin_wheel/original/SPEC.md">original/SPEC.md</a> <a href="projects/student_spin_wheel/original/src/Main.java">original/src/Main.java</a> <a href="projects/student_spin_wheel/original/src/RosterState.java">original/src/RosterState.java</a> <a href="projects/student_spin_wheel/original/src/StudentSpinWheel.java">original/src/StudentSpinWheel.java</a> <a href="projects/student_spin_wheel/original/src/WheelMath.java">original/src/WheelMath.java</a> <a href="projects/student_spin_wheel/original/src/WheelPanel.java">original/src/WheelPanel.java</a> <a href="projects/student_spin_wheel/original/TASKS.md">original/TASKS.md</a> <a href="projects/student_spin_wheel/original/tests/DesktopChecks.java">original/tests/DesktopChecks.java</a> <a href="projects/student_spin_wheel/original/tests/SpinWheelChecks.java">original/tests/SpinWheelChecks.java</a> </p><p><a href="projects/student_spin_wheel/README.md">Run, evidence, limitations</a> | <a href="projects/student_spin_wheel/prompts.md">Exact history</a></p></article>
+</main><p id="empty" hidden>No matching projects.</p>
+<script>
+const search = document.querySelector('#search'), status = document.querySelector('#status');
+const cards = [...document.querySelectorAll('article')];
+function filter() {
+  const query = search.value.toLocaleLowerCase().trim();
+  let visible = 0;
+  for (const card of cards) {
+    card.hidden = !(card.textContent.toLocaleLowerCase().includes(query)
+      && (!status.value || card.dataset.status === status.value));
+    if (!card.hidden) visible++;
+  }
+  document.querySelector('#count').textContent = `${visible} of ${cards.length} projects`;
+  document.querySelector('#empty').hidden = visible !== 0;
+}
+search.addEventListener('input', filter); status.addEventListener('change', filter); filter();
+</script></html>

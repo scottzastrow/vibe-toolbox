@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>CSV Quick Check tests</title>
+<h1>CSV Quick Check browser tests</h1>
+<p>Open this file locally. The iframe loads the actual app; no server or libraries required.</p>
+<pre id="result">RUNNING</pre>
+<iframe id="app" title="CSV Quick Check under test" src="../projects/csv_quick_check/csv_quick_check.html"></iframe>
+<script>
+"use strict";
+const frame = document.querySelector("#app");
+frame.addEventListener("load", async () => {
+  const output = document.querySelector("#result");
+  let checks = 0;
+  function equal(actual, expected, label) {
+    if (JSON.stringify(actual) !== JSON.stringify(expected))
+      throw new Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    checks++;
+  }
+  try {
+    const app = frame.contentWindow, doc = frame.contentDocument;
+    const cases = [
+      ["empty", "", [0, 0, 0, 0]],
+      ["empty lines only", "\n\r\n\n", [0, 0, 0, 0]],
+      ["header only", "a,b\n", [0, 2, 0, 0]],
+      ["BOM CRLF and duplicate", "\uFEFFa,b\r\n1,2\r\n1,2\r\n", [2, 2, 0, 1]],
+      ["blank cells", "a,b\n, \n\"\",\"\t\"\n", [2, 2, 4, 0]],
+      ["ignored empty lines", "\nname,score\n\nAlex,10\n\n", [1, 2, 0, 0]],
+      ["quoted newline preserved", 'a,b\n"x\n\ny",z\n"x\n\ny",z', [2, 2, 0, 1]],
+      ["quoted commas and escaped quotes", 'a,b\n"x,y","say ""hi"""\n', [1, 2, 0, 0]],
+      ["case and spaces exact", "a,b\nA,x\na,x\nA, x\nA,x\n", [4, 2, 0, 1]],
+      ["header not duplicated data", "a,b\na,b\na,b", [2, 2, 0, 1]],
+      ["blank headers excluded", ", \nx,y", [1, 2, 0, 0]],
+      ["quoting does not change parsed values", 'a,b\n"x",y\nx,y', [2, 2, 0, 1]],
+      ["Unicode whitespace blank", "a\n\u00a0", [1, 1, 1, 0]],
+      ["quoted empty header", '""\n""', [1, 1, 1, 0]],
+      ["one column whitespace line", "a\n \n", [1, 1, 1, 0]],
+      ["trailing blank field", "a,b\nx,", [1, 2, 1, 0]],
+      ["duplicate extra occurrences", "a\nx\nx\nx", [3, 1, 0, 2]],
+      ["CRLF versus LF within quotes differ", 'a\n"x\r\ny"\n"x\ny"', [2, 1, 0, 0]],
+      ["HTML treated as data", 'a\n"<img src=x onerror=alert(1)>"', [1, 1, 0, 0]]
+    ];
+    for (const [label, input, expected] of cases) {
+      const result = app.analyzeCsv(input);
+      equal(result.errors, [], label + " errors");
+      equal(Object.values(result.stats), expected, label + " counts");
+    }
+    for (const [label, input, line] of [
+      ["ragged", "a,b\nx", 2],
+      ["unclosed", 'a,b\n"x,y', 2],
+      ["stray quote", 'a\nx"y', 2],
+      ["trailing text", 'a\n"x" y', 2],
+      ["bare CR", "a\rx", 1],
+      ["whitespace line not ignored", "a,b\n \n", 2],
+      ["physical error line", '\na,b\n"x\nx",y\n\nz', 6]
+    ]) {
+      const result = app.analyzeCsv(input);
+      equal(result.stats, null, label + " withholds counts");
+      equal(result.errors[0].line, line, label + " line");
+    }
+    equal(app.analyzeCsv("a,b\nx\nx,y,z").errors.length, 2, "multiple ragged rows");
+    const pasted = doc.querySelector("#csv");
+    const picker = doc.querySelector("#file");
+    const checkFile = doc.querySelector("#checkFile");
+    equal(checkFile.textContent, "Check file", "explicit file action label");
+    equal(checkFile.disabled, true, "file action initially disabled");
+    equal(doc.querySelector("#filename").textContent, "No file selected.", "initial filename status");
+    pasted.value = "a,b\n1,2\n1,2";
+    doc.querySelector("#analyze").click();
+    equal(doc.querySelector("#rows").textContent, "2", "paste UI rows");
+    equal(doc.querySelector("#duplicateRows").textContent, "1", "paste UI duplicates");
+    pasted.value = 'a\n"x';
+    doc.querySelector("#analyze").click();
+    equal(doc.querySelector("#totals").hidden, true, "stale counts hidden on error");
+    equal(doc.querySelectorAll("#errors li").length, 1, "error rendered");
+
+    function selectFile(bytes, name) {
+      const transfer = new DataTransfer();
+      if (name) transfer.items.add(new File([bytes], name));
+      picker.files = transfer.files;
+      picker.dispatchEvent(new Event("change"));
+    }
+    async function waitForFile() {
+      for (let i = 0; i < 100; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        if (doc.querySelector("#result").getAttribute("aria-busy") === "false") return;
+      }
+      throw new Error("File read timed out");
+    }
+    selectFile("h1,h2\nv1,v2", "misleading.bin");
+    equal(checkFile.disabled, false, "selection enables file action");
+    equal(doc.querySelector("#filename").textContent, "Selected file: misleading.bin", "selected filename shown");
+    equal(doc.querySelector("#totals").hidden, true, "selection does not produce counts");
+    equal(doc.querySelector("#message").textContent, "Click Check file to process the selected file.", "selection waits for explicit action");
+    equal(doc.querySelector("#result").getAttribute("aria-busy"), "false", "selection does not start reading");
+    checkFile.click();
+    await waitForFile();
+    equal(doc.querySelector("#rows").textContent, "1", "misleading extension parses content");
+    equal(doc.querySelector("#totals").hidden, false, "file UI totals shown");
+    pasted.value = "a,b\n1,2\n1,2";
+    doc.querySelector("#analyze").click();
+    equal(doc.querySelector("#rows").textContent, "2", "paste ignores selected file");
+    equal(doc.querySelector("#duplicateRows").textContent, "1", "paste uses only text box");
+    checkFile.click();
+    await waitForFile();
+    equal(doc.querySelector("#rows").textContent, "1", "file action can recheck without reselection");
+    equal(doc.querySelector("#duplicateRows").textContent, "0", "file action ignores pasted text");
+    equal(pasted.value, "a,b\n1,2\n1,2", "file action preserves text box");
+    selectFile('a\n"x', "ragged.csv");
+    checkFile.click();
+    await waitForFile();
+    equal(doc.querySelector("#totals").hidden, true, "file structural error hides counts");
+    equal(doc.querySelectorAll("#errors li").length, 1, "file structural error rendered");
+    selectFile(new Uint8Array([0xff, 0xfe, 0x80]), "bad.csv");
+    checkFile.click();
+    await waitForFile();
+    equal(doc.querySelector("#totals").hidden, true, "invalid UTF-8 withholds counts");
+    equal(doc.querySelector("#message").textContent.startsWith("Could not read UTF-8 file:"), true, "encoding error");
+
+    for (const action of ["paste", "replace", "clear"]) {
+      selectFile("a\nold", "pending.csv");
+      let finishRead;
+      Object.defineProperty(picker.files[0], "arrayBuffer", {
+        value: () => new Promise(resolve => { finishRead = resolve; })
+      });
+      checkFile.click();
+      equal(doc.querySelector("#result").getAttribute("aria-busy"), "true", action + " pending read marked busy");
+      if (action === "paste") doc.querySelector("#analyze").click();
+      else if (action === "replace") selectFile("a\nnew", "replacement.csv");
+      else selectFile();
+      const currentMessage = doc.querySelector("#message").textContent;
+      finishRead(new TextEncoder().encode("a\nold").buffer);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      equal(doc.querySelector("#message").textContent, currentMessage, action + " ignores stale file completion");
+      equal(doc.querySelector("#result").getAttribute("aria-busy"), "false", action + " clears busy status");
+      if (action === "paste") equal(doc.querySelector("#rows").textContent, "2", "pending file cannot overwrite paste");
+      else equal(doc.querySelector("#totals").hidden, true, action + " keeps old counts hidden");
+    }
+    equal(checkFile.disabled, true, "cleared selection disables file action");
+    equal(doc.querySelector("#filename").textContent, "No file selected.", "cleared filename status");
+    const clearedMessage = doc.querySelector("#message").textContent;
+    checkFile.click();
+    equal(doc.querySelector("#message").textContent, clearedMessage, "disabled file action does nothing");
+    doc.querySelector("#analyze").click();
+    equal(doc.querySelector("#rows").textContent, "2", "paste still works without file selection");
+    output.textContent = `PASS ${checks} checks (actual app parser, separate paste/file actions, selection state, stale reads, UTF-8 failure)`;
+  } catch (error) {
+    output.textContent = `FAIL after ${checks} checks: ${error.stack || error}`;
+  }
+});
+</script></html>
