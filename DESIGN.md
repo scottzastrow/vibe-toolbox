@@ -25,8 +25,9 @@ index.html                      generated, not manually edited
 README.md                       collection usage and verification
 ```
 
-Only CSV Quick Check is registered now. Presentation Timer and Student Spin
-Wheel remain pending, without substitute artifacts or invented histories.
+CSV Quick Check, Presentation Timer, and Student Spin Wheel are registered
+with their available artifacts and recorded history; unavailable history and
+metadata remain marked `TBD`.
 
 ## Metadata and history
 
@@ -79,17 +80,11 @@ After successful import or cancellation, a 303 redirect returns to the root
 with an allowlisted status message. Import failures remain explicit; partial
 imports show the catalog alongside their failure status and a Details link.
 
-The bundled Student Spin Wheel instead has an **Open app** form posting to the
-fixed `/launch/student_spin_wheel` route behind the same Host/Origin/token
-checks. `StudentWheelLauncher` accepts no request parameters: it verifies a fixed
-five-file SHA-256 allowlist, compiles private copies with annotation processing
-disabled and empty dependency/source paths, and executes only `Main` using the
-running JDK's Java executable. Generated classes and logs stay under ignored
-`out`; symlinks are rejected. Only one desktop process runs per manager, and
-manager shutdown terminates it. Missing JDK/desktop, changed files, compilation
-failures, and early exits report explicit errors with a manual fallback link.
-This exception does not enable execution of other imported Java projects.
-The independent offline catalog continues to link to run instructions.
+The bundled Student Spin Wheel is a single-file browser app. Its live-catalog
+**Open app** link targets the separate sandboxed content origin, just like other
+HTML apps; the independent offline catalog links directly to the same file.
+Its previous Java source, specifications, and tests remain under `original` as
+source history. The management server does not launch desktop processes.
 
 An explicit **Add project** button above the cards POSTs to open a native Swing directory
 chooser on the computer running Java. The browser cannot read arbitrary
@@ -116,8 +111,7 @@ README, not a database or duplicate metadata registry. Details are rendered from
 that README and link to original files/history. HTML main files open on a
 separate loopback content origin with a sandbox policy, never the privileged
 management origin. Java main files show compilation/run guidance and identify
-unknown entry-point/build details as `TBD`; the manager does not execute them
-except for the fixed, reviewed bundled Student Spin Wheel described above.
+unknown entry-point/build details as `TBD`; the manager does not execute them.
 
 Protect management POSTs with a cryptographically random per-launch token,
 exact Origin and Host validation, bounded form bodies, and same-origin fetch.

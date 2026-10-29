@@ -1,41 +1,54 @@
 # Run and evidence
 
-Dependency-free Java 21 Swing/Java2D classroom tool. It spins a student roster,
-tracks previous results, and can remove selected winners from future draws.
+Single-file browser classroom tool. It spins a student roster, tracks previous
+results, and can remove selected winners from future draws. The original Java
+implementation and its checks remain preserved under `original`.
 
 ## Run
 
-With the local server running, click **Open app** on the Student Spin Wheel
-card. It compiles the reviewed bundled version and opens its desktop window on
-the computer running the server. A full JDK 21 and graphical desktop are
-required. Repeated clicks do not open duplicate instances. Stopping the server
-closes the launched app; use the commands below to run it independently.
+Open the [selected HTML main file](student_spin_wheel.html) directly in a modern
+browser, or click **Open app** in either catalog. It works offline and needs no
+server, installation, or external resources.
 
-### Offline or manual fallback
+The wheel starts with Scott, Emma, Liam, Olivia, Noah, Ava, James, Sophia,
+Lucas, and Mia. Each spin takes five seconds and chooses one remaining student
+uniformly at random. Winner removal is enabled by default; unchecking it allows
+repeat winners without restoring anyone already removed. Add unique names,
+review results in order, and reset to restore only the original ten students
+and clear the history. Reset preserves the removal setting and any text in the
+name editor.
 
-From the Vibe Toolbox root in PowerShell, compile outside the preserved source
-folder and launch the desktop app:
-
-```powershell
-$build = Join-Path $env:TEMP 'student-spin-wheel-out'
-New-Item -ItemType Directory -Force $build | Out-Null
-javac --release 21 -d $build projects\student_spin_wheel\original\src\*.java
-java -cp $build Main
-```
-
-See the preserved [specification](original/SPEC.md) for behavior and checks,
-and [plan](original/PLAN.md) for the recorded implementation outline.
+See the preserved [Java specification](original/SPEC.md) and
+[implementation plan](original/PLAN.md) for the original version's behavior.
 
 ## Test results
 
-Compiled with Java 21 and passed `SpinWheelChecks` (204,350 assertions) and
-`DesktopChecks` (102 Swing checks). No human visual inspection was performed.
+On 2026-10-29, `node tests\management_browser_tests.mjs` passed 89 workflow
+checks in real headless Chrome, plus 6 import persistence checks. The wheel
+checks cover both catalog links (including the offline catalog opened from
+disk), live details, the five-second animation and pointer alignment,
+adding trimmed names by click/Enter, blank and duplicate rejection (including
+removed winners), control locks, winner removal on/off, repeated winners,
+ordered history, full-roster exhaustion, adding after exhaustion, reset,
+mobile layout dimensions, and direct-file operation without a server.
 
-The local-server browser check clicked **Open app**, verified the launched
-process was a child of the server with an actual window titled Student Spin
-Wheel, and confirmed a second click reused the running instance.
+Add Name uses click/Enter handlers rather than form submission so it works
+with the live catalog's existing form-blocking sandbox. History uses the
+ordered list's native numbering. No sandbox permissions were relaxed.
+Screenshots and console evidence are saved under ignored `out`; the only
+console error was the import fixture's intentional HTTP 400 collision.
+
+All 11 preserved files under `original` match Git HEAD byte-for-byte.
+The original Java checks were rerun: `SpinWheelChecks` passed 204,350 assertions
+and `DesktopChecks` passed 102 Swing checks. Compilation produced four existing
+serialization warnings; preserved sources were not edited.
 
 ## Known limitations
 
-The app requires a graphical desktop. The preserved specification calls for a
-visual check of resizing, spinning, adding names, removal, exhaustion, and reset.
+State lasts only for the current page session; reloading restores the original
+roster. The browser wheel scales to the available viewport; large rosters and
+long names shrink labels, with full names available on hover.
+
+Human visual/accessibility testing, normal-browser keyboard and screen-reader
+use, large-roster readability, and other browser engines still need manual
+verification. Automated Chrome and Swing interaction is not human testing.

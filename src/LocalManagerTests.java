@@ -19,7 +19,6 @@ public final class LocalManagerTests {
             if (args.length == 1 && args[0].equals("browser")) browserFixture(temp);
             else {
                 test(temp);
-                testUnreviewedLauncherSource(temp);
                 System.out.println("PASS " + assertions + " local management checks");
             }
         } finally {
@@ -82,18 +81,11 @@ public final class LocalManagerTests {
             String token = field(home.body(), "token");
             expect(choices.get() == 0, "GET does not open chooser");
             expect(get(origin + "/choose").statusCode() == 404 && choices.get() == 0, "GET chooser forbidden");
-            expect(get(origin + "/launch/student_spin_wheel").statusCode() == 404, "GET cannot launch desktop app");
-            expect(post(origin + "/launch/student_spin_wheel", Map.of("token", token), null).statusCode() == 403,
-                    "desktop launch requires Origin");
-            expect(post(origin + "/launch/student_spin_wheel", Map.of("token", token), "http://evil.invalid").statusCode() == 403,
-                    "desktop launch rejects foreign Origin");
-            expect(post(origin + "/launch/student_spin_wheel", Map.of("token", "wrong"), origin).statusCode() == 403,
-                    "desktop launch requires launch token");
+            expect(get(origin + "/launch/student_spin_wheel").statusCode() == 404, "desktop launch route removed");
+            expect(post(origin + "/launch/student_spin_wheel", Map.of("token", token), origin).statusCode() == 404,
+                    "desktop launch POST route removed");
             expect(post(origin + "/launch/java_app", Map.of("token", token), origin).statusCode() == 404,
                     "arbitrary project cannot be launched");
-            HttpResponse<String> missingApp = post(origin + "/launch/student_spin_wheel", Map.of("token", token), origin);
-            expect(missingApp.statusCode() == 500 && missingApp.body().contains("Could not open Student Spin Wheel")
-                    && missingApp.body().contains("Run instructions"), "launch failure is explicit with manual fallback");
             expect(post(origin + "/choose", Map.of("token", token), null).statusCode() == 403, "missing Origin rejected");
             expect(post(origin + "/choose", Map.of("token", token), "http://evil.invalid").statusCode() == 403, "foreign Origin rejected");
             expect(post(origin + "/choose", Map.of("token", token), "null").statusCode() == 403, "sandbox opaque Origin rejected");
@@ -226,23 +218,6 @@ public final class LocalManagerTests {
             System.out.println("PASS " + assertions + " browser persistence checks");
         }
 
-    }
-
-    private static void testUnreviewedLauncherSource(Path temp) throws IOException {
-        Path root = Files.createDirectory(temp.resolve("unreviewed-launch"));
-        Path source = Files.createDirectories(root.resolve("projects").resolve("student_spin_wheel")
-                .resolve("original").resolve("src"));
-        Files.writeString(source.resolve("Main.java"), "public class Main { public static void main(String[] args) {} }\n");
-        try (StudentWheelLauncher launcher = new StudentWheelLauncher(root)) {
-            try {
-                launcher.launch();
-                throw new AssertionError("Unreviewed source must not launch");
-            } catch (IOException e) {
-                expect(e.getMessage().contains(java.awt.GraphicsEnvironment.isHeadless()
-                        ? "graphical desktop" : "differs from the reviewed bundled version"),
-                        "desktop launcher refuses unreviewed sources (or missing desktop)");
-            }
-        }
     }
 
     private static long countProjects(Path root) throws IOException {

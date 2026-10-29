@@ -24,10 +24,10 @@ java -cp out Main serve
 ```
 
 Open the exact `http://127.0.0.1:<port>/` URL printed after `Vibe Toolbox:`.
-Keep that terminal running. **Ctrl+C** stops the server and its launched
-Student Spin Wheel. No npm install, Maven, Gradle, or external runtime service
-is needed. Student Spin Wheel and the Add project folder chooser require a
-graphical desktop on the server computer. See [current limitations](#current-limitations).
+Keep that terminal running. **Ctrl+C** stops the server. No npm install,
+Maven, Gradle, or external runtime service is needed. The Add project folder
+chooser requires a graphical desktop on the server computer. See
+[current limitations](#current-limitations).
 
 For the independent offline catalog instead, no Java is required:
 Open [index.html](index.html) directly in a modern browser. It searches local
@@ -36,18 +36,18 @@ a server or internet connection. Markdown documentation links may display
 as plain text in a browser; they are also readable in an editor.
 
 [CSV Quick Check](projects/csv_quick_check/csv_quick_check.html) runs directly
-in the browser, with no installation or uploads. The Presentation Timer is
-also a single-file browser app; the Student Spin Wheel is a Java 21 desktop app.
+in the browser, with no installation or uploads. The Presentation Timer and
+Student Spin Wheel are also self-contained single-file browser apps.
 
 | Demonstration | Availability |
 |---|---|
 | CSV Quick Check | Implemented; see its run instructions and evidence |
 | Presentation Timer | Imported; open its app link in the catalog and see its README |
-| Student Spin Wheel | Imported; see its README for Java 21 run and check commands |
+| Student Spin Wheel | Browser app; the previous Java implementation is preserved as source history |
 
-The sibling source folders are unchanged. Available Spin Wheel specifications,
-plans, task notes, and tests are preserved; prompt history not present in the
-sources remains marked `TBD`.
+The sibling source folders are unchanged. The Spin Wheel's Java specifications,
+plans, task notes, source, and tests are preserved under its `original` folder;
+prompt history not present in the sources remains marked `TBD`.
 
 ## Organizer commands (JDK 21)
 
@@ -164,19 +164,10 @@ These protections do not defend against malware or processes already running
 as your user. Use one organizer process at a time; don't run CLI writes during
 a browser import.
 
-The bundled **Student Spin Wheel** is the sole desktop-launch exception:
-its **Open app** button submits a token- and Origin-protected POST to a fixed
-endpoint. The server verifies the five source files against reviewed SHA-256
-fingerprints, compiles private copies using the running JDK 21 (with annotation
-processing disabled), and starts the fixed `Main` class in a separate JVM.
-Builds and desktop logs stay under ignored `out\student-wheel-*`; originals are
-never compiled into or changed. Modified sources fail explicitly instead of
-running unreviewed code. No request can choose commands, arguments, or paths.
-Repeated clicks reuse the existing running instance; closing the server also
-closes its desktop process. The window opens on the server computer, which must
-have a graphical desktop and a full JDK 21. Startup failures appear on the page.
-Run instructions remain under **Details** and in the independent offline
-catalog; that offline page cannot launch Java.
+The bundled **Student Spin Wheel** is a single HTML app, served through the same
+read-only sandboxed content origin as the other browser projects. Its Open app
+links work from both the live and offline catalogs; it does not launch desktop
+processes or require Java when opened directly.
 
 ## Records and checks
 
@@ -240,8 +231,8 @@ java -cp out LocalManagerTests
 node tests\management_browser_tests.mjs
 ```
 
-The second command additionally needs Node 22+ (built-in WebSocket), Chrome
-or Edge, and a graphical desktop for the Java launch; no npm packages are needed.
+The second command additionally needs Node 22+ (built-in WebSocket) and Chrome
+or Edge; no npm packages are needed.
 Import checks use disposable sample projects. The browser test drives the real server
 and HTML forms with Chrome mouse events, substituting a deterministic folder
 selection provider for the native OS dialog. It checks visible review,
@@ -249,11 +240,15 @@ cancellation, exclusions, confirmation, details, HTML rendering, Java guidance,
 collision feedback, and updated catalog entries, then verifies persisted bytes.
 It also starts the real `Main serve` process and opens its printed URL to verify
 the bundled app cards, descriptions, actions, Details links, and Add project
-button together, clicks Student Spin Wheel's Open app, verifies the actual
-desktop window on Windows, and checks that repeated clicks do not duplicate it.
-Screenshots and console evidence are written under ignored `out`.
+button together. It follows the live catalog's Student Spin Wheel link and
+checks the app's five-second spin, winner alignment, adding names, removal,
+history, reset, and exhaustion behavior. It also opens the offline catalog
+from disk and exercises the wheel without a server, checks repeat winners
+with removal off, and measures the mobile layout. Screenshots and console
+evidence are written under ignored `out`.
 
-To rerun the bundled desktop app's own checks from the collection root:
+To rerun the preserved Java implementation's historical checks from the
+collection root:
 
 ```powershell
 javac --release 21 -Xlint:all -d out\wheel-tests projects\student_spin_wheel\original\src\*.java projects\student_spin_wheel\original\tests\*.java
@@ -272,15 +267,16 @@ On 2026-10-29, on Windows with JDK 21 and Chrome:
 |---|---|---|
 | `javac --release 21 -Xlint:all -d out src\*.java` | Clean Java 21 compilation | PASS; no compiler warnings |
 | `java -cp out ToolboxTests` | Add/import integrity, error paths, CLI exit codes, exact history preservation, escaped/deterministic catalog | PASS; 79 assertions |
-| `java -cp out LocalManagerTests` | Import protections, cancellation, exclusions, collisions, source preservation, desktop-launch protections, explicit failures | PASS; 68 checks |
-| `node tests\management_browser_tests.mjs` | Browser import/cancel workflow, actual printed URL with all three apps, protected desktop launch and duplicate prevention | PASS; 43 browser checks plus 6 persistence checks |
-| `java -cp out Main catalog` then `java -cp out Main check` | Valid records/references and generated offline index | PASS; 3 projects, 0 errors, 28 warnings |
+| `java -cp out LocalManagerTests` | Import protections, cancellation, exclusions, collisions, source preservation, removed desktop-launch route | PASS; 64 checks |
+| `node tests\management_browser_tests.mjs` | Browser import/cancel workflow, both catalog links, wheel behavior and actual server URL | PASS; 89 workflow checks and 6 persistence checks |
+| `java -cp out Main catalog` then `java -cp out Main check` | Valid records/references and generated offline index | PASS; 3 projects, 0 errors, 27 warnings |
 | `tests\run_browser_tests.ps1` CSV harness | Supported CSV counts/errors, separate paste/file actions, filename/disabled state, stale reads | PASS; 92 checks |
 | Same runner, catalog harness | Offline search, no-match feedback, every status filter | PASS; 24 checks |
-| Copied wheel `SpinWheelChecks` and `DesktopChecks` | Roster/math/drawing and real Swing behavior | PASS; 204,350 assertions and 102 Swing checks |
+| Preserved wheel `SpinWheelChecks` and `DesktopChecks` | Original Java roster/math/drawing and Swing behavior | PASS; 204,350 assertions and 102 Swing checks |
+| Preserved wheel files compared with Git HEAD | Original source, tests, and notes unchanged | PASS; all 11 files match byte-for-byte |
 | `git diff --check` and `git diff --cached --check` | No whitespace errors, including the staged baseline | PASS |
 
-The 28 checker warnings retain unavailable metadata and history.
+The 27 checker warnings retain unavailable metadata and history.
 No rating, model name, or human verification was guessed to remove warnings.
 The copied wheel compiles with four existing Java serialization lint warnings;
 its original sources are retained rather than edited to suppress them.
@@ -289,6 +285,9 @@ supplied history and source file sets, failed import cleanup, malformed
 records, missing/escaping references, catalog bootstrapping, and actual CLI
 success/failure exit codes. They use disposable import fixtures; the browser
 launch check also exercises the actual bundled Student Spin Wheel.
+The recovered browser conversion needed click/Enter name handlers instead of
+form submission, which the content sandbox blocks. History numbering was also
+corrected to use the ordered list's native markers. The sandbox remains unchanged.
 
 These are agent checks, including interaction with the app in a real but
 headless browser, not proof of human use. A graphical IntelliJ run was not
@@ -298,9 +297,8 @@ performed.
 
 - The local server is for a trusted local desktop only. Do not proxy or expose
   either loopback port to other computers.
-- Only the exact reviewed bundled Student Spin Wheel can launch Java through the
-  server. Other imported Java apps retain manual instructions. The offline catalog
-  cannot launch Java, and changed bundled sources fail fingerprint verification.
+- Imported Java apps retain manual instructions and are not executed by the
+  management server.
 - HTML apps opened through the server run on a sandboxed content origin. Storage,
   downloads, and network features may be restricted; open trusted HTML directly
   from disk when needed. Timer progress is session-only and local-file storage

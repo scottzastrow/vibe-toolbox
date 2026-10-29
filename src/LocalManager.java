@@ -18,7 +18,6 @@ public final class LocalManager implements AutoCloseable {
     private final Path root;
     private final Toolbox toolbox;
     private final FolderChooser chooser;
-    private final StudentWheelLauncher studentWheel;
     private final HttpServer management;
     private final HttpServer content;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -34,7 +33,6 @@ public final class LocalManager implements AutoCloseable {
         this.root = root.toRealPath();
         this.toolbox = new Toolbox(this.root);
         this.chooser = chooser;
-        this.studentWheel = new StudentWheelLauncher(this.root);
         management = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
         try {
             content = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
@@ -159,19 +157,6 @@ public final class LocalManager implements AutoCloseable {
                     redirectHome(exchange, "cancelled");
                 }
                 case "/confirm" -> confirm(exchange, form);
-                case "/launch/student_spin_wheel" -> {
-                    try {
-                        boolean started = studentWheel.launch();
-                        send(exchange, 200, page("<section class=\"notice\" role=\"status\"><h2>"
-                                + (started ? "Student Spin Wheel started" : "Student Spin Wheel is already running")
-                                + "</h2><p>Look for its desktop window on this computer.</p></section>" + home(null)), "text/html");
-                    } catch (IOException e) {
-                        System.err.println("Student Spin Wheel launch failed: " + e.getMessage());
-                        send(exchange, 500, page("<section class=\"notice\" role=\"alert\"><h2>Could not open Student Spin Wheel</h2>"
-                                + "<pre>" + html(e.getMessage()) + "</pre><a href=\"/project/student_spin_wheel#run\">Run instructions</a>"
-                                + "</section>" + home(null)), "text/html");
-                    }
-                }
                 default -> send(exchange, 404, "Unknown action", "text/plain");
             }
         }
@@ -270,10 +255,7 @@ public final class LocalManager implements AutoCloseable {
             String app = htmlMain(project, readme);
             text.append("<article><h2>").append(html(project.title())).append("</h2><p>")
                     .append(html(description)).append("</p><div class=\"card-actions\">");
-            if (slug.equals("student_spin_wheel"))
-                text.append(formStart("/launch/student_spin_wheel"))
-                        .append("<button class=\"action\" id=\"openStudentWheel\">Open app</button></form>");
-            else if (app != null)
+            if (app != null)
                 text.append("<a class=\"action\" target=\"_blank\" rel=\"noopener noreferrer\" href=\"")
                         .append(contentUrl()).append("projects/").append(slug).append("/").append(html(app))
                         .append("\">Open app</a>");
@@ -367,8 +349,11 @@ public final class LocalManager implements AutoCloseable {
             String target = main.group(1);
             URI reference = URI.create(target);
             String decoded = reference.getPath();
+            boolean bundledWheelApp = slug.equals("student_spin_wheel")
+                    && "student_spin_wheel.html".equals(decoded);
             if (reference.isAbsolute() || reference.getRawAuthority() != null || decoded == null
-                    || decoded.contains("\\") || decoded.contains(":") || !decoded.startsWith("original/"))
+                    || decoded.contains("\\") || decoded.contains(":")
+                    || (!decoded.startsWith("original/") && !bundledWheelApp))
                 throw new IOException("Invalid main-file link.");
             Path relative = Path.of(decoded);
             if (!relative.equals(relative.normalize()) || relative.isAbsolute())
@@ -471,7 +456,6 @@ public final class LocalManager implements AutoCloseable {
     }
 
     @Override public void close() {
-        studentWheel.close();
         management.stop(0);
         content.stop(0);
         executor.shutdownNow();

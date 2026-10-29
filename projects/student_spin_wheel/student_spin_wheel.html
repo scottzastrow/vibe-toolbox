@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Student Spin Wheel</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font: 16px/1.5 system-ui, sans-serif;
+      color: #14213d;
+      background: #f5f7fc;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+      padding: 1.25rem;
+    }
+    h1 { margin: 0 0 1rem; color: #172d59; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .wheel-panel, .controls {
+      background: #fff;
+      border: 1px solid #c5cede;
+      border-radius: .75rem;
+      padding: 1rem;
+    }
+    .wheel-panel { text-align: center; }
+    canvas {
+      display: block;
+      width: min(100%, 660px);
+      aspect-ratio: 1;
+      margin: 0 auto;
+      touch-action: manipulation;
+    }
+    .result {
+      min-height: 3rem;
+      margin: .5rem 0 0;
+      color: #172d59;
+      font-size: clamp(1.35rem, 3vw, 2rem);
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+    .controls label { display: block; margin: .65rem 0; }
+    input[type="text"] {
+      width: 100%;
+      margin-top: .25rem;
+      padding: .65rem;
+      border: 1px solid #8794ab;
+      border-radius: .35rem;
+      font: inherit;
+    }
+    button {
+      padding: .6rem .9rem;
+      border: 0;
+      border-radius: .4rem;
+      background: #172d59;
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .secondary { background: #e8edf5; color: #172d59; }
+    .count { margin: .9rem 0 .25rem; font-weight: 700; }
+    .status { min-height: 3rem; margin: .25rem 0 1rem; }
+    ol { max-height: 18rem; overflow: auto; padding-left: 1.8rem; }
+    li { padding: .15rem 0; overflow-wrap: anywhere; }
+    .error { color: #9c2525; }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid #447bd1;
+      outline-offset: 2px;
+    }
+    @media (max-width: 760px) {
+      main { padding: .75rem; }
+      .layout { grid-template-columns: 1fr; }
+      .controls { order: -1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Student Spin Wheel</h1>
+    <div class="layout">
+      <section class="wheel-panel" aria-label="Spin wheel and result">
+        <canvas id="wheel" role="img" aria-label="Wheel with ten students"></canvas>
+        <p id="result" class="result" aria-live="polite">Who goes next?</p>
+      </section>
+      <section class="controls" aria-label="Wheel controls">
+        <div>
+          <label for="newName">New student name</label>
+          <input id="newName" type="text" autocomplete="off">
+          <button id="addName" type="button">Add Name</button>
+        </div>
+        <label><input id="removeWinner" type="checkbox" checked> Remove selected students</label>
+        <button id="spin" type="button">Spin</button>
+        <button id="reset" class="secondary" type="button"
+          title="Restore only the premade students, remove temporary names, and clear all turns">Reset</button>
+        <p id="remaining" class="count">Remaining students: 10</p>
+        <p id="status" class="status" role="status">Ready to spin.</p>
+        <h2>Already selected (in order)</h2>
+        <ol id="history"></ol>
+      </section>
+    </div>
+  </main>
+  <script>
+    "use strict";
+    const DEFAULT_NAMES = Object.freeze([
+      "Scott", "Emma", "Liam", "Olivia", "Noah",
+      "Ava", "James", "Sophia", "Lucas", "Mia"
+    ]);
+    const COLORS = [
+      "#bfe3fa", "#ffc9a3", "#c8e6b0", "#e2ccfa", "#ffe599",
+      "#a9e3da", "#fac1d2", "#c5cdf5", "#e2eba7", "#f5d0b5"
+    ];
+    const SPIN_MILLIS = 5000;
+    const canvas = document.querySelector("#wheel");
+    const context = canvas.getContext("2d");
+    const addButton = document.querySelector("#addName");
+    const nameInput = document.querySelector("#newName");
+    const removeInput = document.querySelector("#removeWinner");
+    const spinButton = document.querySelector("#spin");
+    const resetButton = document.querySelector("#reset");
+    const result = document.querySelector("#result");
+    const remaining = document.querySelector("#remaining");
+    const status = document.querySelector("#status");
+    const historyList = document.querySelector("#history");
+    let sessionRoster = [...DEFAULT_NAMES];
+    let activeNames = [...DEFAULT_NAMES];
+    let wheelNames = [...DEFAULT_NAMES];
+    let history = [];
+    let rotation = 0;
+    let highlighted = -1;
+    let spinning = false;
+    let startedAt;
+    let startRotation;
+    let destination;
+    let winnerIndex;
+
+    function normalize(degrees) {
+      return ((degrees % 360) + 360) % 360;
+    }
+
+    function winningRotation(index, count) {
+      return normalize(-(index + 0.5) * 360 / count);
+    }
+
+    function setCanvasSize() {
+      const size = Math.max(1, canvas.clientWidth);
+      const ratio = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(size * ratio) || canvas.height !== Math.round(size * ratio)) {
+        canvas.width = Math.round(size * ratio);
+        canvas.height = Math.round(size * ratio);
+      }
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      drawWheel();
+    }
+
+    function drawWheel() {
+      const size = canvas.clientWidth;
+      if (!size) return;
+      const center = size / 2;
+      const radius = Math.max(1, (size - 56) / 2);
+      context.clearRect(0, 0, size, size);
+      const count = wheelNames.length;
+      const sweep = count ? 2 * Math.PI / count : 2 * Math.PI;
+      for (let index = 0; index < count; index++) {
+        const start = -Math.PI / 2 + rotation * Math.PI / 180 + index * sweep;
+        const end = start + sweep;
+        context.beginPath();
+        context.moveTo(center, center);
+        context.arc(center, center, radius, start, end);
+        context.closePath();
+        context.fillStyle = COLORS[index % COLORS.length];
+        context.fill();
+        context.lineWidth = index === highlighted ? 5 : 2;
+        context.strokeStyle = index === highlighted ? "#172d59" : "#fff";
+        context.stroke();
+
+        const angle = start + sweep / 2;
+        context.save();
+        context.translate(center + Math.cos(angle) * radius * .59,
+          center + Math.sin(angle) * radius * .59);
+        let textAngle = angle;
+        const readableAngle = normalize(angle * 180 / Math.PI);
+        if (readableAngle > 90 && readableAngle < 270) textAngle += Math.PI;
+        context.rotate(textAngle);
+        const maxWidth = radius * .67;
+        const maxHeight = count === 1 ? radius * .4 : 2 * radius * .25 * Math.sin(sweep / 2);
+        const fontSize = Math.max(1, Math.min(22, maxHeight / 1.2));
+        context.font = `700 ${fontSize}px system-ui, sans-serif`;
+        context.fillStyle = "#14213d";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(wheelNames[index], 0, 0, maxWidth);
+        context.restore();
+      }
+      context.beginPath();
+      context.arc(center, center, radius, 0, 2 * Math.PI);
+      context.lineWidth = 3;
+      context.strokeStyle = "#172d59";
+      context.stroke();
+      context.beginPath();
+      context.arc(center, center, 10, 0, 2 * Math.PI);
+      context.fillStyle = "#172d59";
+      context.fill();
+      context.beginPath();
+      context.moveTo(center - 15, center - radius - 22);
+      context.lineTo(center + 15, center - radius - 22);
+      context.lineTo(center, center - radius + 16);
+      context.closePath();
+      context.fillStyle = "#172d59";
+      context.fill();
+      canvas.setAttribute("aria-label", `Wheel with ${count} student${count === 1 ? "" : "s"}`);
+    }
+
+    function syncControls() {
+      const idle = !spinning;
+      spinButton.disabled = !idle || activeNames.length === 0;
+      addButton.disabled = !idle;
+      nameInput.disabled = !idle;
+      resetButton.disabled = !idle;
+      removeInput.disabled = !idle;
+      remaining.textContent = `Remaining students: ${activeNames.length}`;
+      if (!spinning && activeNames.length === 0) {
+        status.textContent = "Everyone has had a turn! Reset to start again.";
+      }
+    }
+
+    function rebuildWheel() {
+      wheelNames = [...activeNames];
+      rotation = 0;
+      highlighted = -1;
+      drawWheel();
+    }
+
+    function addName() {
+      if (spinning) return;
+      const name = nameInput.value.trim();
+      status.classList.remove("error");
+      if (!name) {
+        status.textContent = "Please enter a new student name.";
+        status.classList.add("error");
+        return;
+      }
+      if (/\r|\n/.test(name)) {
+        status.textContent = "Please enter only one student name at a time.";
+        status.classList.add("error");
+        return;
+      }
+      if (sessionRoster.some(existing => existing.toLowerCase() === name.toLowerCase())) {
+        status.textContent = `Duplicate name: ${name}. Add a last initial to distinguish students.`;
+        status.classList.add("error");
+        return;
+      }
+      sessionRoster.push(name);
+      activeNames.push(name);
+      rebuildWheel();
+      nameInput.value = "";
+      status.textContent = "Student added. Ready to spin.";
+      syncControls();
+    }
+
+    function finishSpin() {
+      rotation = normalize(destination);
+      highlighted = winnerIndex;
+      const winner = wheelNames[winnerIndex];
+      history.push(winner);
+      const item = document.createElement("li");
+      item.textContent = winner;
+      historyList.append(item);
+      if (removeInput.checked) activeNames.splice(winnerIndex, 1);
+      result.textContent = `${winner} goes next!`;
+      status.classList.remove("error");
+      status.textContent = activeNames.length === 0 ? "All turns complete." : "Ready to spin.";
+      spinning = false;
+      drawWheel();
+      syncControls();
+    }
+
+    function animate(now) {
+      const progress = Math.min(1, (now - startedAt) / SPIN_MILLIS);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      rotation = startRotation + (destination - startRotation) * eased;
+      drawWheel();
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        finishSpin();
+      }
+    }
+
+    function startSpin() {
+      if (spinning || activeNames.length === 0) return;
+      wheelNames = [...activeNames];
+      highlighted = -1;
+      const count = activeNames.length;
+      winnerIndex = Math.floor(Math.random() * count);
+      startRotation = normalize(rotation);
+      destination = startRotation + 5 * 360
+        + normalize(winningRotation(winnerIndex, count) - startRotation);
+      startedAt = performance.now();
+      spinning = true;
+      result.textContent = "Spinning...";
+      status.classList.remove("error");
+      status.textContent = "Spinning - good luck!";
+      syncControls();
+      requestAnimationFrame(animate);
+    }
+
+    function resetTurns() {
+      if (spinning) return;
+      sessionRoster = [...DEFAULT_NAMES];
+      activeNames = [...DEFAULT_NAMES];
+      history = [];
+      historyList.replaceChildren();
+      rebuildWheel();
+      result.textContent = "Who goes next?";
+      status.classList.remove("error");
+      status.textContent = "Ready to spin.";
+      syncControls();
+    }
+
+    addButton.addEventListener("click", addName);
+    nameInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addName();
+      }
+    });
+    spinButton.addEventListener("click", startSpin);
+    resetButton.addEventListener("click", resetTurns);
+    canvas.addEventListener("pointermove", event => {
+      if (!wheelNames.length) {
+        canvas.title = "";
+        return;
+      }
+      const bounds = canvas.getBoundingClientRect();
+      const dx = event.clientX - (bounds.left + bounds.width / 2);
+      const dy = event.clientY - (bounds.top + bounds.height / 2);
+      const radius = Math.max(1, (bounds.width - 56) / 2);
+      if (Math.hypot(dx, dy) > radius) {
+        canvas.title = "";
+        return;
+      }
+      const clockwise = normalize(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+      const index = Math.min(wheelNames.length - 1,
+        Math.floor(normalize(clockwise - rotation) / (360 / wheelNames.length)));
+      canvas.title = wheelNames[index];
+    });
+    new ResizeObserver(setCanvasSize).observe(canvas);
+    window.addEventListener("resize", setCanvasSize);
+    syncControls();
+  </script>
+</body>
+</html>

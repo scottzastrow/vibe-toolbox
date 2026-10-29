@@ -1,10 +1,10 @@
 // Uses Node's built-in WebSocket and Chrome's DevTools protocol, with no packages.
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const browser = [
@@ -14,7 +14,7 @@ const browser = [
 if (!browser) throw new Error("Chrome or Edge is required.");
 const profile = mkdtempSync(path.join(tmpdir(), "vibe-manager-browser-"));
 const fixture = spawn("java", ["-cp", path.join(root, "out"), "LocalManagerTests", "browser"], { cwd: root });
-let fixtureOutput = "", fixtureErrors = "", chrome, socket, toolboxServer, desktopPid;
+let fixtureOutput = "", fixtureErrors = "", chrome, socket, toolboxServer;
 fixture.stdout.on("data", bytes => { fixtureOutput += bytes; });
 fixture.stderr.on("data", bytes => { fixtureErrors += bytes; });
 const fixtureExit = once(fixture, "exit");
@@ -105,6 +105,30 @@ try {
     await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point }, sessionId);
     await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point }, sessionId);
   }
+  async function addName(name, enter = false) {
+    await evaluate('document.querySelector("#newName").value = ""');
+    await click("#newName");
+    await send("Input.insertText", { text: name }, sessionId);
+    if (enter) {
+      await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 }, sessionId);
+      await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 }, sessionId);
+    } else {
+      await click("#addName");
+    }
+  }
+  async function spin(winner) {
+    await click("#spin");
+    await until(() => evaluate(`document.querySelector("#result").textContent === ${JSON.stringify(`${winner} goes next!`)}`),
+      `spin completes for ${winner}`);
+    expect(await evaluate(`(() => {
+      const wheel = document.querySelector("#wheel"), box = wheel.getBoundingClientRect();
+      const radius = (box.width - 56) / 2;
+      wheel.dispatchEvent(new PointerEvent("pointermove", {
+        clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 - radius * .8
+      }));
+      return wheel.title === ${JSON.stringify(winner)};
+    })()`), `${winner} aligns with the wheel pointer`);
+  }
   async function fill(slug, name, main) {
     await evaluate(`(() => {
       document.querySelector('[name="slug"]').value = ${JSON.stringify(slug)};
@@ -177,7 +201,6 @@ try {
   writeFileSync(path.join(root, "out", "management-catalog-browser.png"), Buffer.from(screenshot.data, "base64"));
   expect(errors.length === 1 && errors[0].includes("400 (Bad Request)"),
     `expected only the deliberate collision HTTP 400; browser console: ${errors.join("\n")}`);
-  writeFileSync(path.join(root, "out", "management-browser-console.log"), errors.join("\n") || "No browser errors.\n");
   fixture.stdin.end("\n");
   const [code] = await fixtureExit;
   expect(code === 0 && fixtureOutput.includes("PASS 6 browser persistence checks"),
@@ -196,34 +219,160 @@ try {
       && card.querySelector(".action")?.textContent === "Open app" && card.querySelector("a.details")?.textContent === "Details"
       && !!card.querySelector("p")?.textContent.trim())`), `${title} card has description, action and Details`);
   }
+  const wheelUrl = await evaluate(`(() => {
+    const card = Array.from(document.querySelectorAll("article"))
+      .find(item => item.querySelector("h2")?.textContent === "Student Spin Wheel");
+    return card.querySelector(".action").href;
+  })()`);
+  expect(new URL(wheelUrl).pathname === "/projects/student_spin_wheel/student_spin_wheel.html",
+    "live catalog Open app targets the browser wheel");
+  const wheelDetails = await fetch(new URL("/project/student_spin_wheel", printedUrl));
+  const wheelDetailsHtml = await wheelDetails.text();
+  expect(wheelDetails.ok && wheelDetailsHtml.includes('id="openApp"')
+    && wheelDetailsHtml.includes("projects/student_spin_wheel/student_spin_wheel.html"),
+  "live project details link to the browser wheel");
   expect(await evaluate('document.querySelector("#choose").getBoundingClientRect().bottom <= document.querySelector(".cards").getBoundingClientRect().top'),
     "Add project is above cards");
   expect(await evaluate('!document.querySelector("main").textContent.includes("**Dates:**")'),
     "technical metadata stays off catalog home");
-  expect(await evaluate('getComputedStyle(document.querySelector("#openStudentWheel")).cursor === "pointer"'),
-    "Student Spin Wheel Open app shows a pointer cursor");
-  await click("#openStudentWheel");
-  expect(await visible('[role="status"]', "Student Spin Wheel started"), "Open app launches the Java desktop process");
-  if (process.platform === "win32") {
-    desktopPid = Number(execFileSync("powershell.exe", ["-NoProfile", "-Command",
-      `$child = Get-CimInstance Win32_Process -Filter "ParentProcessId = ${toolboxServer.pid}" | Where-Object Name -eq 'java.exe'; $child.ProcessId`
-    ], { encoding: "utf8" }).trim());
-    expect(Number.isInteger(desktopPid) && desktopPid > 0, "desktop app is a child of the local server");
-    const title = await until(() => execFileSync("powershell.exe", ["-NoProfile", "-Command",
-      `(Get-Process -Id ${desktopPid}).MainWindowTitle`
-    ], { encoding: "utf8" }).trim(), "desktop window title");
-    expect(title === "Student Spin Wheel", "launched Java app has its actual desktop window");
+  await navigate(new URL("/index.html", wheelUrl).href);
+  const offlineWheelUrl = await evaluate(`(() => {
+    const card = Array.from(document.querySelectorAll("article"))
+      .find(item => item.querySelector("h2")?.textContent === "Student Spin Wheel");
+    return card.querySelector(".actions a").href;
+  })()`);
+  expect(new URL(offlineWheelUrl).pathname === "/projects/student_spin_wheel/student_spin_wheel.html",
+    "offline catalog Open app targets the browser wheel");
+  await navigate(offlineWheelUrl);
+  expect(await visible("h1", "Student Spin Wheel"), "offline catalog link opens the browser app");
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 1280, height: 900, deviceScaleFactor: 1, mobile: false
+  }, sessionId);
+  await navigate(wheelUrl);
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 10"'),
+    "browser app starts with the original roster");
+  expect(await evaluate('document.querySelector("#removeWinner").checked'),
+    "winner removal is enabled by default");
+  await addName("   ");
+  expect(await evaluate('document.querySelector("#status").textContent === "Please enter a new student name."'
+    + ' && document.querySelector("#remaining").textContent === "Remaining students: 10"'),
+    "blank names are rejected inline");
+  await addName(" Zoe ");
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 11"'),
+    "adding a trimmed name by click updates the active roster");
+  expect(await evaluate('document.querySelector("#newName").value === ""'),
+    "successful addition clears the editor");
+  await addName("zoe", true);
+  expect(await evaluate('document.querySelector("#status").textContent.startsWith("Duplicate name:")'),
+    "duplicate names are rejected case-insensitively");
+  await evaluate(`(() => {
+    document.querySelector("#spin").addEventListener("click", () => {
+      window.__spinStarted = performance.now();
+    }, { capture: true, once: true });
+    Math.random = () => 0.999999;
+  })()`);
+  await click("#spin");
+  expect(await evaluate('document.querySelector("#status").textContent === "Spinning - good luck!"'
+    + ' && ["spin", "newName", "addName", "removeWinner", "reset"].every(id => document.getElementById(id).disabled)'),
+    "spin disables state-changing controls");
+  await until(() => evaluate('document.querySelector("#result").textContent === "Zoe goes next!"'),
+    "five-second spin completes");
+  expect(await evaluate('performance.now() - window.__spinStarted >= 5000'),
+    "spin animation lasts five seconds");
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 10"'
+    + ' && document.querySelector("#history").textContent === "Zoe"'),
+    "selected winner is removed and recorded in history");
+  expect(await evaluate(`(() => {
+    const wheel = document.querySelector("#wheel"), box = wheel.getBoundingClientRect();
+    const radius = (box.width - 56) / 2;
+    wheel.dispatchEvent(new PointerEvent("pointermove", {
+      clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 - radius * .8
+    }));
+    return wheel.title === "Zoe";
+  })()`), "winner aligns with the wheel pointer");
+  const wheelScreenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }, sessionId);
+  writeFileSync(path.join(root, "out", "student-wheel-winner.png"), Buffer.from(wheelScreenshot.data, "base64"));
+  await addName("ZOE", true);
+  expect(await evaluate('document.querySelector("#status").textContent.startsWith("Duplicate name:")'
+    + ' && document.querySelector("#remaining").textContent === "Remaining students: 10"'),
+    "removed winners remain in duplicate-name validation");
+  await click("#removeWinner");
+  await evaluate('Math.random = () => 0');
+  await spin("Scott");
+  await spin("Scott");
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 10"'
+    + ' && JSON.stringify(Array.from(document.querySelectorAll("#history li"), item => item.textContent))'
+    + ' === JSON.stringify(["Zoe", "Scott", "Scott"])'),
+    "removal off allows repeat winners, preserves ordered history, and does not restore removed names");
+  await addName("Alex", true);
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 11"'
+    + ' && document.querySelector("#history").children.length === 3'
+    + ' && document.querySelector("#result").textContent === "Scott goes next!"'),
+    "adding by Enter preserves history and result without restoring removed names");
+  await evaluate(`(() => {
+    document.querySelector("#newName").value = "Draft text";
+  })()`);
+  await click("#reset");
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 10"'
+    + ' && document.querySelector("#history").children.length === 0'
+    + ' && document.querySelector("#result").textContent === "Who goes next?"'
+    + ' && !document.querySelector("#removeWinner").checked'
+    + ' && document.querySelector("#newName").value === "Draft text"'),
+    "reset restores only defaults, clears history, and preserves editor and removal setting");
+  await click("#removeWinner");
+  const defaults = ["Scott", "Emma", "Liam", "Olivia", "Noah", "Ava", "James", "Sophia", "Lucas", "Mia"];
+  for (const [index, winner] of defaults.entries()) {
+    await spin(winner);
+    expect(await evaluate(`document.querySelector("#remaining").textContent === "Remaining students: ${9 - index}"`),
+      `removal leaves ${9 - index} students`);
   }
-  await click("#openStudentWheel");
-  expect(await visible('[role="status"]', "already running"), "repeated Open app does not spawn duplicates");
+  expect(await evaluate('document.querySelector("#spin").disabled'
+    + ' && document.querySelector("#status").textContent.includes("Reset to start again.")'
+    + ' && JSON.stringify(Array.from(document.querySelectorAll("#history li"), item => item.textContent))'
+    + ` === ${JSON.stringify(JSON.stringify(defaults))}`),
+    "exhaustion disables Spin and displays reset instructions");
+  await addName("Zoe", true);
+  expect(await evaluate('!document.querySelector("#spin").disabled'
+    + ' && document.querySelector("#remaining").textContent === "Remaining students: 1"'),
+    "reset discarded old temporary names and adding after exhaustion enables Spin");
+  await spin("Zoe");
+  await click("#reset");
+  expect(await evaluate('!document.querySelector("#spin").disabled'
+    + ' && document.querySelector("#remaining").textContent === "Remaining students: 10"'
+    + ' && document.querySelector("#history").children.length === 0'),
+    "reset recovers from exhaustion");
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 390, height: 844, deviceScaleFactor: 2, mobile: true
+  }, sessionId);
+  expect(await evaluate('document.documentElement.scrollWidth <= innerWidth'
+    + ' && Math.abs(document.querySelector("#wheel").getBoundingClientRect().width'
+    + ' - document.querySelector("#wheel").getBoundingClientRect().height) < 1'),
+    "mobile layout fits the viewport and keeps the wheel circular");
+  const mobileScreenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }, sessionId);
+  writeFileSync(path.join(root, "out", "student-wheel-mobile.png"), Buffer.from(mobileScreenshot.data, "base64"));
+  await send("Emulation.clearDeviceMetricsOverride", {}, sessionId);
+  await navigate(pathToFileURL(path.join(root, "index.html")).href);
+  const directWheelUrl = await evaluate(`Array.from(document.querySelectorAll("article"))
+    .find(item => item.querySelector("h2")?.textContent === "Student Spin Wheel").querySelector(".actions a").href`);
+  expect(directWheelUrl === pathToFileURL(path.join(root, "projects", "student_spin_wheel", "student_spin_wheel.html")).href,
+    "local-file offline catalog targets the same browser app");
+  await navigate(directWheelUrl);
+  await addName("Offline student", true);
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 11"'),
+    "direct-file app accepts names without a server");
+  await evaluate('Math.random = () => 0.999999');
+  await spin("Offline student");
+  await click("#reset");
+  expect(await evaluate('document.querySelector("#remaining").textContent === "Remaining students: 10"'
+    + ' && document.querySelector("#history").children.length === 0'),
+    "direct-file spin, removal, history, and reset work");
+  expect(errors.length === 1 && errors[0].includes("400 (Bad Request)"),
+    `no wheel or catalog browser errors; expected only deliberate collision: ${errors.join("\n")}`);
   expect(!serverErrors, `actual server errors: ${serverErrors}`);
-  console.log(`PASS ${checks} browser workflow checks; native chooser replaced by deterministic test selection`);
+  console.log(`PASS ${checks} browser workflow checks; wheel behavior and both catalog links verified`);
   console.log(fixtureOutput.trim().split("\n").slice(1).join("\n"));
 } finally {
-  if (desktopPid) {
-    try { process.kill(desktopPid); }
-    catch (error) { if (error.code !== "ESRCH") throw error; }
-  }
+  writeFileSync(path.join(root, "out", "management-browser-console.log"), errors.join("\n") || "No browser errors.\n");
   if (toolboxServer && toolboxServer.exitCode === null) {
     const exited = once(toolboxServer, "exit");
     toolboxServer.kill();
