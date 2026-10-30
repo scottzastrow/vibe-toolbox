@@ -5,6 +5,12 @@ For classmates, instructors, and future maintainers who want runnable
 artifacts, exact available AI history, and evidence rather than unsupported
 "it works" claims.
 
+## Personal connection
+
+This assignment brought me back to using an Apple IIe in the 1980s. Back then, I wrote a catalog menu so someone could choose from the programs stored on a floppy disk. There wasn't a graphical desktop presenting everything—you built that front door yourself.
+
+Vibe Toolbox brought back that same idea: put useful programs together, give people a clear way to choose one, and leave room to add more. This assignment extends it by preserving the prompts, development history, and verification behind each app. The technology has changed considerably, but the need to make a collection of programs understandable and accessible feels very familiar.
+
 ## Download and run
 
 Download and extract the published repository's ZIP, or clone its actual
