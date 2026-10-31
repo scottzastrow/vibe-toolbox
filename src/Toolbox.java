@@ -481,8 +481,11 @@ public final class Toolbox {
             else for (String reference : artifacts)
                 html.append("<a href=\"").append(escape(base + reference)).append("\">")
                         .append(escape(reference)).append("</a> ");
-            html.append("</p><p><a href=\"").append(base).append("README.md\">Run, evidence, limitations</a> | ")
-                    .append("<a href=\"").append(base).append("prompts.md\">Exact history</a></p></article>\n");
+            html.append("</p><p><a href=\"").append(base).append("README.md\">Details</a>");
+            if (p.directory().getFileName().toString().equals("csv_quick_check"))
+                html.append(" | <a href=\"").append(base)
+                        .append("sample.csv\" download=\"sample.csv\">Sample CSV</a>");
+            html.append(" | <a href=\"").append(base).append("prompts.md\">Exact history</a></p></article>\n");
         }
         html.append("""
                 </main><p id="empty" hidden>No matching projects.</p>

@@ -10,6 +10,10 @@ text**, which checks only the text box even when a file is selected.
 No Java, installation, server, external assets, or network access
 is required. Input stays in the browser's memory.
 
+Use [sample.csv](sample.csv) to try the file workflow. It contains five data
+rows and produces 3 columns, 2 blank cells, 1 duplicate row, and no structural
+errors.
+
 Inspired by classmate Ezana Asfaw's presentation: inspect file contents rather
 than trusting the extension. This credits the idea, not borrowed source code.
 

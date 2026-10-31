@@ -16,7 +16,14 @@ document.querySelector("#app").addEventListener("load", () => {
     const search = doc.querySelector("#search"), status = doc.querySelector("#status");
     const cards = [...doc.querySelectorAll("article")];
     const visible = () => cards.filter(card => !card.hidden);
+    const sampleLinks = [...doc.querySelectorAll('a[download="sample.csv"]')];
     expect(cards.length >= 1, "at least one record");
+    const csvCard = cards.find(card => card.querySelector("h2")?.textContent === "CSV Quick Check");
+    expect(!!csvCard && sampleLinks.length === 1 && csvCard.contains(sampleLinks[0])
+      && sampleLinks[0].parentElement.querySelector('a[href$="README.md"]')?.textContent === "Details"
+      && sampleLinks[0].previousElementSibling?.textContent === "Details"
+      && new URL(sampleLinks[0].href).pathname.endsWith("/projects/csv_quick_check/sample.csv"),
+    "sample CSV download appears only on the CSV Quick Check card");
     expect(visible().length === cards.length, "all records initially shown");
     for (const choice of ["prototype", "keeper", "abandoned", "TBD"])
       expect([...status.options].some(option => option.value === choice), "status option " + choice);

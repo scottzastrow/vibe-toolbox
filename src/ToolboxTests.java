@@ -36,6 +36,17 @@ public final class ToolboxTests {
         String html = Files.readString(root.resolve("index.html"));
         expect(html.contains("&lt;script&gt;") && !html.contains("<script>alert"), "catalog escapes titles");
         expect(html.contains("<option>abandoned</option>") && html.contains("data-status=\"TBD\""), "all status choices");
+        expect(!html.contains("download=\"sample.csv\""), "sample download is not shown for other projects");
+        toolbox.add("csv_quick_check", "CSV Quick Check", null);
+        Path sampleCsv = root.resolve("projects/csv_quick_check/sample.csv");
+        Files.writeString(sampleCsv, "name,course,score\nAlex,SEIS 606,92\nJordan,SEIS 606,\n"
+                + "Casey,SEIS 606,88\nAlex,SEIS 606,92\nMorgan,,95\n");
+        toolbox.catalog(toolbox.check());
+        html = Files.readString(root.resolve("index.html"));
+        expect(html.contains("href=\"projects/csv_quick_check/sample.csv\" download=\"sample.csv\">Sample CSV</a>"),
+                "generator adds a sample download to the CSV Quick Check card");
+        expect(html.indexOf("download=\"sample.csv\"") == html.lastIndexOf("download=\"sample.csv\""),
+                "generator emits only one sample download link");
         toolbox.catalog(toolbox.check());
         expect(html.equals(Files.readString(root.resolve("index.html"))), "deterministic catalog");
         expect(initial.equals(Files.readString(record)), "catalog/check never rewrite history");
@@ -73,6 +84,9 @@ public final class ToolboxTests {
         expect(catalog.contains("<p class=\"description\">An imported browser app for this catalog test.</p>"),
                 "catalog shows the project description");
         expect(catalog.contains(">Open app</a>"), "browser app has an Open action");
+        expect(catalog.indexOf("download=\"sample.csv\"") == catalog.lastIndexOf("download=\"sample.csv\"")
+                && catalog.contains("<h2>CSV Quick Check</h2>"),
+                "sample download remains limited to the CSV Quick Check card");
         Path javaSource = Files.createDirectory(temp.resolve("java-supplied"));
         Files.writeString(javaSource.resolve("Main.java"), "public class Main {}\n");
         toolbox.add("java_app", "Java App", javaSource);

@@ -43,6 +43,10 @@ frame.addEventListener("load", async () => {
       equal(result.errors, [], label + " errors");
       equal(Object.values(result.stats), expected, label + " counts");
     }
+    const sampleCsv = "name,course,score\nAlex,SEIS 606,92\nJordan,SEIS 606,\n"
+      + "Casey,SEIS 606,88\nAlex,SEIS 606,92\nMorgan,,95\n";
+    equal(app.analyzeCsv(sampleCsv).errors, [], "bundled sample CSV has no structural errors");
+    equal(Object.values(app.analyzeCsv(sampleCsv).stats), [5, 3, 2, 1], "bundled sample CSV expected counts");
     for (const [label, input, line] of [
       ["ragged", "a,b\nx", 2],
       ["unclosed", 'a,b\n"x,y', 2],
@@ -104,6 +108,13 @@ frame.addEventListener("load", async () => {
     equal(doc.querySelector("#rows").textContent, "1", "file action can recheck without reselection");
     equal(doc.querySelector("#duplicateRows").textContent, "0", "file action ignores pasted text");
     equal(pasted.value, "a,b\n1,2\n1,2", "file action preserves text box");
+    selectFile(sampleCsv, "sample.csv");
+    checkFile.click();
+    await waitForFile();
+    equal([doc.querySelector("#rows").textContent, doc.querySelector("#columns").textContent,
+      doc.querySelector("#blankCells").textContent, doc.querySelector("#duplicateRows").textContent],
+    ["5", "3", "2", "1"], "sample CSV file UI totals");
+    equal(doc.querySelectorAll("#errors li").length, 0, "sample CSV file has no structural errors");
     selectFile('a\n"x', "ragged.csv");
     checkFile.click();
     await waitForFile();

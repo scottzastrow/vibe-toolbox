@@ -219,6 +219,40 @@ try {
       && card.querySelector(".action")?.textContent === "Open app" && card.querySelector("a.details")?.textContent === "Details"
       && !!card.querySelector("p")?.textContent.trim())`), `${title} card has description, action and Details`);
   }
+  const liveSampleUrl = await evaluate(`(() => {
+    const cards = [...document.querySelectorAll("article")];
+    const csv = cards.find(card => card.querySelector("h2")?.textContent === "CSV Quick Check");
+    const sample = csv?.querySelector('a[download="sample.csv"]');
+    return sample && cards.filter(card => card.querySelector('a[download="sample.csv"]')).length === 1
+      && sample.previousElementSibling?.textContent === "Details" ? sample.href : null;
+  })()`);
+  expect(!!liveSampleUrl && new URL(liveSampleUrl).pathname === "/projects/csv_quick_check/sample.csv",
+    "live catalog shows Sample CSV download only for CSV Quick Check");
+  const sampleResponse = await fetch(liveSampleUrl);
+  const sampleText = await sampleResponse.text();
+  const expectedSample = "name,course,score\nAlex,SEIS 606,92\nJordan,SEIS 606,\n"
+    + "Casey,SEIS 606,88\nAlex,SEIS 606,92\nMorgan,,95\n";
+  expect(sampleResponse.ok && sampleResponse.headers.get("content-disposition") === 'attachment; filename="sample.csv"'
+    && sampleResponse.headers.get("content-type").startsWith("text/csv")
+    && sampleText.replaceAll("\r\n", "\n") === expectedSample,
+  "live Sample CSV link downloads the exact fixture");
+  await navigate(new URL("/projects/csv_quick_check/csv_quick_check.html", liveSampleUrl).href);
+  await evaluate(`(() => {
+    const picker = document.querySelector("#file"), transfer = new DataTransfer();
+    transfer.items.add(new File([${JSON.stringify(sampleText)}], "sample.csv", {type: "text/csv"}));
+    picker.files = transfer.files;
+    picker.dispatchEvent(new Event("change"));
+  })()`);
+  await until(() => evaluate('document.querySelector("#checkFile") && !document.querySelector("#checkFile").disabled'),
+    "sample CSV selected in the actual app");
+  await click("#checkFile");
+  await until(() => evaluate('document.querySelector("#result").getAttribute("aria-busy") === "false"'
+    + ' && !document.querySelector("#totals").hidden'), "actual sample CSV analyzed");
+  expect(await evaluate(`JSON.stringify(["#rows", "#columns", "#blankCells", "#duplicateRows"]
+    .map(selector => document.querySelector(selector).textContent)) === '["5","3","2","1"]'
+    && document.querySelectorAll("#errors li").length === 0`),
+  "downloaded sample produces 5 rows, 3 columns, 2 blank cells, 1 duplicate, and no structural errors");
+  await navigate(printedUrl);
   const wheelUrl = await evaluate(`(() => {
     const card = Array.from(document.querySelectorAll("article"))
       .find(item => item.querySelector("h2")?.textContent === "Student Spin Wheel");
@@ -236,6 +270,21 @@ try {
   expect(await evaluate('!document.querySelector("main").textContent.includes("**Dates:**")'),
     "technical metadata stays off catalog home");
   await navigate(new URL("/index.html", wheelUrl).href);
+  expect(await evaluate(`(() => {
+    const cards = [...document.querySelectorAll("article")];
+    const csv = cards.find(card => card.querySelector("h2")?.textContent === "CSV Quick Check");
+    const sample = csv?.querySelector('a[download="sample.csv"]');
+    return !!sample && cards.filter(card => card.querySelector('a[download="sample.csv"]')).length === 1
+      && sample.previousElementSibling?.textContent === "Details"
+      && new URL(sample.href).pathname === "/projects/csv_quick_check/sample.csv";
+  })()`), "offline catalog shows Sample CSV download only for CSV Quick Check");
+  const offlineSampleUrl = await evaluate(`(() => {
+    const card = [...document.querySelectorAll("article")]
+      .find(item => item.querySelector("h2")?.textContent === "CSV Quick Check");
+    return card.querySelector('a[download="sample.csv"]').href;
+  })()`);
+  expect(offlineSampleUrl.endsWith("/projects/csv_quick_check/sample.csv")
+    && (await fetch(offlineSampleUrl)).ok, "offline Sample CSV link points to a downloadable project file");
   const offlineWheelUrl = await evaluate(`(() => {
     const card = Array.from(document.querySelectorAll("article"))
       .find(item => item.querySelector("h2")?.textContent === "Student Spin Wheel");

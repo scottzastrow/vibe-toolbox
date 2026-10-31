@@ -368,7 +368,11 @@ public final class LocalManager implements AutoCloseable {
                         .append(contentUrl()).append("projects/").append(slug).append("/").append(html(app))
                         .append("\">Open app</a>");
             else text.append("<a class=\"action\" href=\"/project/").append(slug).append("#run\">Run instructions</a>");
-            text.append(" <a class=\"details\" href=\"/project/").append(slug).append("\">Details</a></div></article>");
+            text.append(" <a class=\"details\" href=\"/project/").append(slug).append("\">Details</a>");
+            if (slug.equals("csv_quick_check"))
+                text.append(" <a class=\"details\" href=\"").append(contentUrl())
+                        .append("projects/csv_quick_check/sample.csv\" download=\"sample.csv\">Sample CSV</a>");
+            text.append("</div></article>");
         }
         if (check.projects().isEmpty()) text.append("<p>No projects yet. Use Add project to get started.</p>");
         return text.append("</section><p><a href=\"/about\">Help and technical information</a></p>").toString();
@@ -537,9 +541,12 @@ public final class LocalManager implements AutoCloseable {
                 String type = file.toString().toLowerCase(Locale.ROOT);
                 String mime = type.endsWith(".html") || type.endsWith(".htm") ? "text/html"
                         : type.endsWith(".js") ? "text/javascript" : type.endsWith(".css") ? "text/css"
+                        : type.endsWith(".csv") ? "text/csv"
                         : type.endsWith(".svg") ? "image/svg+xml" : type.endsWith(".png") ? "image/png"
                         : type.endsWith(".jpg") || type.endsWith(".jpeg") ? "image/jpeg" : "text/plain";
                 exchange.getResponseHeaders().set("Content-Type", mime + "; charset=utf-8");
+                if (relative.equals(Path.of("projects", "csv_quick_check", "sample.csv")))
+                    exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"sample.csv\"");
                 exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
                 exchange.getResponseHeaders().set("Cache-Control", "no-store");
                 long length = Files.size(file);

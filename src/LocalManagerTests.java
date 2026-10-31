@@ -64,6 +64,11 @@ public final class LocalManagerTests {
     }
 
     private static void test(Path temp) throws Exception {
+        String expectedSample = "name,course,score\nAlex,SEIS 606,92\nJordan,SEIS 606,\n"
+                + "Casey,SEIS 606,88\nAlex,SEIS 606,92\nMorgan,,95\n";
+        expect(Files.readString(Path.of("projects", "csv_quick_check", "sample.csv"))
+                        .replace("\r\n", "\n").equals(expectedSample),
+                "bundled sample CSV has the specified exact contents");
         Path root = collection(temp), source = source(temp);
         Map<String, String> original = snapshot(source);
         AtomicReference<Path> selected = new AtomicReference<>();
