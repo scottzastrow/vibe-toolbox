@@ -128,6 +128,15 @@ the import remains available for repair and catalog regeneration is not claimed
 as successful. Never rewrite original documentation to conceal errors. Catalog
 replacement is atomic so an unsuccessful generation retains the last catalog.
 
+Project Details also supports removing bundled or imported projects through a
+protected POST confirmation that names the project. It explains that removal
+deletes only the toolbox copy and catalog entry, leaves the original source
+folder untouched, and may make uncommitted toolbox-copy files unrecoverable.
+Cancellation changes nothing. Validate the slug and resolved project path,
+reject symlink escapes, move the project aside while regenerating the catalog,
+and restore it if validation or catalog generation fails. Removal succeeds
+only when the catalog has been regenerated; GET must never mutate projects.
+
 `check` validates canonical required fields, supported metadata values,
 paired prompt/output sections, README sections, and local inline Markdown
 links/images (including supplied Markdown). It detects missing targets,

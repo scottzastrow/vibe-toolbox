@@ -142,7 +142,48 @@ public final class LocalManagerTests {
             String readme = Files.readString(imported.resolve("README.md"));
             expect(readme.contains("Reviewed local app") && readme.contains("## Import exclusions"), "description and exclusions persisted");
             expect(Files.readString(root.resolve("index.html")).contains("Sample &lt;App&gt;"), "catalog regenerated with imported title");
-            expect(get(origin + "/project/sample_app").body().contains("Open HTML app"), "details offer HTML app");
+            String sampleDetails = get(origin + "/project/sample_app").body();
+            expect(sampleDetails.contains("Open HTML app"), "details offer HTML app");
+            expect(sampleDetails.contains("id=\"removeProject\"") && sampleDetails.contains("Remove from toolbox"),
+                    "project details offer removal");
+            expect(get(origin + "/remove").statusCode() == 404 && get(origin + "/remove/confirm").statusCode() == 404,
+                    "GET removal routes are unavailable");
+            expect(post(origin + "/remove", Map.of("token", "wrong", "slug", "sample_app"), origin).statusCode() == 403,
+                    "removal confirmation requires valid protected POST");
+            expect(post(origin + "/remove", Map.of("token", token, "slug", "sample_app"), "http://evil.invalid").statusCode() == 403,
+                    "removal confirmation rejects foreign Origin");
+            String catalogBeforeRemoval = Files.readString(root.resolve("index.html"));
+            Map<String, String> importedBeforeRemoval = snapshot(imported);
+            HttpResponse<String> removalPrompt = post(origin + "/remove",
+                    Map.of("token", token, "slug", "sample_app"), origin);
+            expect(removalPrompt.statusCode() == 200 && removalPrompt.body().contains("Remove Sample &lt;App&gt; from toolbox?")
+                    && removalPrompt.body().contains("original source folder") && removalPrompt.body().contains("Uncommitted files")
+                    && removalPrompt.body().contains("id=\"confirmRemove\""),
+                    "removal confirmation names project and explains consequences");
+            expect(snapshot(imported).equals(importedBeforeRemoval)
+                    && Files.readString(root.resolve("index.html")).equals(catalogBeforeRemoval),
+                    "requesting confirmation changes nothing");
+            expect(post(origin + "/remove/cancel", Map.of("token", token, "slug", "sample_app"), origin)
+                    .body().contains("id=\"projectTitle\""), "removal cancellation returns to project details");
+            expect(snapshot(imported).equals(importedBeforeRemoval)
+                    && Files.readString(root.resolve("index.html")).equals(catalogBeforeRemoval),
+                    "cancellation leaves project and catalog unchanged");
+            expect(post(origin + "/remove", Map.of("token", token, "slug", "../outside"), origin).statusCode() == 400
+                    && Files.exists(source.resolve("app.html")), "unsafe project identifier rejected without touching source");
+            Path external = Files.createDirectory(temp.resolve("external_project"));
+            Files.writeString(external.resolve("keep.txt"), "outside projects");
+            Path escape = root.resolve("projects/escape_link");
+            try {
+                Files.createSymbolicLink(escape, external);
+            } catch (IOException | UnsupportedOperationException symlinksUnavailable) {
+                if (!System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")) throw symlinksUnavailable;
+                Process junction = new ProcessBuilder("cmd.exe", "/c", "mklink /J \"" + escape + "\" \"" + external + "\"")
+                        .redirectErrorStream(true).start();
+                if (junction.waitFor() != 0) throw new IOException("Could not create disposable symlink/junction fixture.");
+            }
+            expect(post(origin + "/remove", Map.of("token", token, "slug", "escape_link"), origin).statusCode() == 400
+                    && Files.exists(external.resolve("keep.txt")), "symlink escape rejected without touching target");
+            Files.delete(escape);
             expect(get(manager.contentUrl() + "projects/sample_app/original/app.html").body().contains("Original HTML works"), "HTML served from separate origin");
             expect(!manager.contentUrl().equals(manager.url()), "content separated from management origin");
             expect(get(manager.contentUrl() + "projects/sample_app/original/app.html").headers()
@@ -191,6 +232,54 @@ public final class LocalManagerTests {
             expect(repair.statusCode() == 409 && repair.body().contains("catalog needs repair"), "invalid original links explicitly report catalog failure");
             expect(Files.readString(root.resolve("index.html")).equals(catalog), "failed catalog validation retains old catalog");
             expect(Files.readString(root.resolve("projects/broken_docs/original/README.md")).equals("[missing](absent.txt)\n"), "invalid supplied docs preserved");
+
+            HttpResponse<String> brokenPrompt = post(origin + "/remove", Map.of("token", token, "slug", "broken_docs"), origin);
+            expect(brokenPrompt.body().contains("Remove Sample &lt;App&gt; from toolbox?"),
+                    "imported project is eligible for removal");
+            HttpResponse<String> brokenRemoved = post(origin + "/remove/confirm",
+                    Map.of("token", token, "slug", "broken_docs"), origin);
+            expect(brokenRemoved.statusCode() == 200 && brokenRemoved.body().contains("Removed from toolbox")
+                    && !Files.exists(root.resolve("projects/broken_docs")), "removal repairs catalog by removing invalid imported project");
+
+            catalog = Files.readString(root.resolve("index.html"));
+            Files.writeString(root.resolve("README.md"), "# Collection\n\n[missing](missing.txt)\n");
+            post(origin + "/remove", Map.of("token", token, "slug", "java_app"), origin);
+            HttpResponse<String> rollback = post(origin + "/remove/confirm",
+                    Map.of("token", token, "slug", "java_app"), origin);
+            expect(rollback.statusCode() == 409 && rollback.body().contains("Removal failed; project restored")
+                    && Files.isDirectory(root.resolve("projects/java_app")), "catalog validation failure restores project copy");
+            expect(Files.readString(root.resolve("index.html")).equals(catalog), "failed removal preserves prior catalog");
+            Files.writeString(root.resolve("README.md"), "# Collection\n");
+
+            HttpResponse<String> removedSample = removeProject(origin, token, "sample_app");
+            expect(removedSample.body().contains("Removed from toolbox")
+                    && !Files.exists(root.resolve("projects/sample_app")), "imported project removal succeeds");
+            expect(snapshot(source).equals(original), "removing imported copy leaves original source unchanged");
+            expect(!Files.readString(root.resolve("index.html")).contains("projects/sample_app/"),
+                    "catalog entry removed after imported project removal");
+            HttpResponse<String> removedJava = removeProject(origin, token, "java_app");
+            expect(removedJava.body().contains("Removed from toolbox")
+                    && !Files.exists(root.resolve("projects/java_app")), "additional imported project removal succeeds");
+            expect(new Toolbox(root).check().projects().isEmpty()
+                    && get(origin).body().contains("No projects yet."),
+                    "empty collection remains valid and displays a helpful message");
+
+            new Toolbox(root).add("bundled_fixture", "Bundled Fixture", null);
+            Toolbox.Check bundledCheck = new Toolbox(root).check(true);
+            new Toolbox(root).catalog(bundledCheck);
+            expect(get(origin + "/project/bundled_fixture").body().contains("Bundled Fixture"),
+                    "bundled-style project details are available");
+            HttpResponse<String> bundledPrompt = post(origin + "/remove",
+                    Map.of("token", token, "slug", "bundled_fixture"), origin);
+            expect(bundledPrompt.body().contains("Remove Bundled Fixture from toolbox?"),
+                    "bundled project removal requires named confirmation");
+            HttpResponse<String> bundledRemoved = post(origin + "/remove/confirm",
+                    Map.of("token", token, "slug", "bundled_fixture"), origin);
+            expect(bundledRemoved.body().contains("Removed from toolbox")
+                    && !Files.exists(root.resolve("projects/bundled_fixture")),
+                    "bundled project can be removed");
+            expect(new Toolbox(root).check().projects().isEmpty() && get(origin).body().contains("No projects yet."),
+                    "empty collection after bundled removal is graceful");
         }
     }
 
@@ -227,6 +316,13 @@ public final class LocalManagerTests {
     private static Map<String, String> confirmation(String token, String preview, String slug, String main) {
         return new HashMap<>(Map.of("token", token, "preview", preview, "slug", slug,
                 "name", "Sample <App>", "description", "User-reviewed description", "main", main));
+    }
+
+    private static HttpResponse<String> removeProject(String origin, String token, String slug)
+            throws IOException, InterruptedException {
+        HttpResponse<String> prompt = post(origin + "/remove", Map.of("token", token, "slug", slug), origin);
+        if (prompt.statusCode() != 200) throw new AssertionError("Removal confirmation failed for " + slug);
+        return post(origin + "/remove/confirm", Map.of("token", token, "slug", slug), origin);
     }
 
     private static String field(String body, String name) {

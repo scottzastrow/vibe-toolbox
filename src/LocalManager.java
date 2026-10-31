@@ -94,9 +94,14 @@ public final class LocalManager implements AutoCloseable {
                 manageRequest(exchange);
             } catch (IOException | IllegalArgumentException e) {
                 System.err.println("Management request failed: " + e.getMessage());
-                if (exchange.getResponseCode() == -1)
-                    send(exchange, 400, page("<h2>Import not completed</h2><pre>" + html(e.getMessage())
-                            + "</pre><p>Return home to select and review again. Existing projects are never overwritten.</p>"), "text/html");
+                if (exchange.getResponseCode() == -1) {
+                    boolean removal = exchange.getRequestURI().getPath().startsWith("/remove");
+                    String heading = removal ? "Removal not completed" : "Import not completed";
+                    String help = removal ? "No project was intentionally removed by this request."
+                            : "Return home to select and review again. Existing projects are never overwritten.";
+                    send(exchange, 400, page("<h2>" + heading + "</h2><pre>" + html(e.getMessage())
+                            + "</pre><p>" + help + "</p>"), "text/html");
+                }
                 else throw e;
             }
         }
@@ -157,8 +162,106 @@ public final class LocalManager implements AutoCloseable {
                     redirectHome(exchange, "cancelled");
                 }
                 case "/confirm" -> confirm(exchange, form);
+                case "/remove" -> confirmRemoval(exchange, form);
+                case "/remove/confirm" -> removeProject(exchange, form);
+                case "/remove/cancel" -> {
+                    String slug = required(form, "slug");
+                    removableProject(slug);
+                    exchange.getResponseHeaders().set("Location", "/project/" + slug);
+                    exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                    exchange.sendResponseHeaders(303, -1);
+                }
                 default -> send(exchange, 404, "Unknown action", "text/plain");
             }
+        }
+    }
+
+    private void confirmRemoval(HttpExchange exchange, Map<String, String> form) throws IOException {
+        String slug = required(form, "slug");
+        Path project = removableProject(slug);
+        String title = slug;
+        Path record = project.resolve("prompts.md");
+        if (Files.isRegularFile(record, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(record)) {
+            String header = Files.readString(record).lines()
+                    .filter(line -> line.startsWith("# Project: ")).findFirst().orElse("");
+            if (!header.isEmpty()) title = header.substring(11).strip();
+        }
+        String body = "<h2>Remove " + html(title) + " from toolbox?</h2>"
+                + "<p>This deletes the toolbox's project copy and catalog entry. The original source folder "
+                + "used to create or import this project will be left untouched.</p>"
+                + "<p><strong>Uncommitted files in the toolbox copy may not be recoverable.</strong></p>"
+                + formStart("/remove/confirm") + "<input type=\"hidden\" name=\"slug\" value=\"" + html(slug) + "\">"
+                + "<button id=\"confirmRemove\">Remove from toolbox</button></form>"
+                + formStart("/remove/cancel") + "<input type=\"hidden\" name=\"slug\" value=\"" + html(slug) + "\">"
+                + "<button id=\"cancelRemove\">Cancel</button></form>";
+        send(exchange, 200, page(body), "text/html");
+    }
+
+    private void removeProject(HttpExchange exchange, Map<String, String> form) throws IOException {
+        String slug = required(form, "slug");
+        Path project = removableProject(slug);
+        Path backup = root.resolve(".remove-" + randomToken());
+        try {
+            Files.move(project, backup, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            send(exchange, 500, page("<h2>Removal not completed</h2><p>The project could not be moved safely, "
+                    + "so the catalog was not changed.</p><pre>" + html(e.getMessage()) + "</pre>"), "text/html");
+            return;
+        }
+        try {
+            Toolbox.Check check = toolbox.check(true);
+            if (check.errors() != 0)
+                throw new IOException("Catalog validation failed:\n" + String.join("\n", check.messages()));
+            toolbox.catalog(check);
+        } catch (IOException | IllegalArgumentException failure) {
+            try {
+                Files.move(backup, project, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException restoreFailure) {
+                failure.addSuppressed(restoreFailure);
+                send(exchange, 500, page("<h2>Removal failed and project restore failed</h2>"
+                        + "<p>The project copy remains at <code>" + html(backup.toString())
+                        + "</code>. Catalog generation failed; see the error below.</p><pre>"
+                        + html(failure.getMessage()) + "</pre>"), "text/html");
+                return;
+            }
+            send(exchange, 409, page("<h2>Removal failed; project restored</h2>"
+                    + "<p>The project is still in the toolbox and the catalog was not updated.</p><pre>"
+                    + html(failure.getMessage()) + "</pre>" + home(null)), "text/html");
+            return;
+        }
+        try {
+            deleteTree(backup);
+        } catch (IOException e) {
+            System.err.println("Project " + slug + " removed from catalog; quarantined copy cleanup failed: " + e.getMessage());
+            send(exchange, 500, page("<h2>Project removed; cleanup incomplete</h2>"
+                    + "<p>The project is absent from the toolbox and the catalog was regenerated, but its quarantined "
+                    + "copy could not be deleted at <code>" + html(backup.toString()) + "</code>.</p><pre>"
+                    + html(e.getMessage()) + "</pre>"), "text/html");
+            return;
+        }
+        redirectHome(exchange, "removed&project=" + slug);
+    }
+
+    private Path removableProject(String slug) throws IOException {
+        if (!slug.matches("[a-z][a-z0-9]*(?:_[a-z0-9]+)*"))
+            throw new IllegalArgumentException("Invalid project identifier.");
+        Path projects = root.resolve("projects");
+        if (Files.isSymbolicLink(projects) || !Files.isDirectory(projects, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Projects directory is unavailable or unsafe.");
+        Path projectsReal = projects.toRealPath();
+        Path project = projects.resolve(slug).normalize();
+        if (!project.getParent().equals(projects) || Files.isSymbolicLink(project)
+                || !Files.isDirectory(project, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Project not found or unsafe.");
+        Path projectReal = project.toRealPath();
+        if (!projectReal.startsWith(projectsReal) || !projectReal.getParent().equals(projectsReal))
+            throw new IOException("Project path escapes the projects directory.");
+        return project;
+    }
+
+    private static void deleteTree(Path directory) throws IOException {
+        try (var paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
         }
     }
 
@@ -237,6 +340,11 @@ public final class LocalManager implements AutoCloseable {
             text.append("<section class=\"notice\" role=\"status\"><h2 id=\"success\">Import successful</h2>")
                     .append("<p>Project added; offline catalog regenerated.</p><a id=\"details\" href=\"/project/")
                     .append(slug).append("\">View imported project details</a></section>");
+        } else if (query != null && query.matches("status=removed&project=[a-z][a-z0-9]*(?:_[a-z0-9]+)*")) {
+            String slug = query.substring(query.indexOf("&project=") + 9);
+            text.append("<section class=\"notice\" role=\"status\"><h2 id=\"success\">Removed from toolbox</h2>")
+                    .append("<p>The toolbox copy and catalog entry for ").append(html(slug))
+                    .append(" were removed; the original source folder was not changed.</p></section>");
         }
         text.append(formStart("/choose")).append("<button id=\"choose\">Add project</button></form>");
         Toolbox.Check check = toolbox.check(true);
@@ -381,7 +489,9 @@ public final class LocalManager implements AutoCloseable {
             }
         }
         originals.append("</ul>");
-        return "<h2 id=\"projectTitle\">" + html(title) + "</h2>" + action
+        String remove = formStart("/remove") + "<input type=\"hidden\" name=\"slug\" value=\"" + html(slug)
+                + "\"><button id=\"removeProject\">Remove from toolbox</button></form>";
+        return "<h2 id=\"projectTitle\">" + html(title) + "</h2>" + action + remove
                 + "<h3 id=\"run\">Project README: description, run instructions, evidence</h3><pre id=\"readme\">" + html(readme) + "</pre>"
                 + originals + "<p><a href=\"" + contentUrl() + "projects/" + slug + "/prompts.md\">Canonical metadata/history (unknowns TBD)</a></p>";
     }

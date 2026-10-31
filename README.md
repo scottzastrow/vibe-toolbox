@@ -155,6 +155,16 @@ The sandbox can limit apps needing downloads, storage, network access, or other
 privileged browser features; after reviewing an app's trustworthiness, it can
 also be opened directly from its imported `original` folder.
 
+Each project's Details page also has **Remove from toolbox**. Removal requires
+a separate confirmation that names the project and explains that it deletes
+the toolbox copy and catalog entry, but leaves the original source folder
+untouched. Uncommitted files in the toolbox copy may not be recoverable.
+Cancellation changes nothing. Removal uses a protected POST, validates the
+project identifier and resolved path (including symlink escapes), then
+regenerates the offline catalog. If validation or catalog generation fails,
+the project copy is restored and the failure is reported. Bundled and imported
+projects can both be removed.
+
 If preserved Markdown has invalid/missing links (including references to
 excluded files), the UI explicitly reports **Project imported; catalog needs
 repair** and retains the previous catalog. Review the diagnostics, repair
@@ -267,13 +277,14 @@ java -cp out\wheel-tests DesktopChecks
 
 ### Current baseline results
 
-On 2026-10-29, on Windows with JDK 21 and Chrome:
+The pre-existing baseline was recorded on 2026-10-29 on Windows with JDK 21
+and Chrome. Removal regressions were rerun on 2026-10-31:
 
 | Executed check | Expected | Observed |
 |---|---|---|
 | `javac --release 21 -Xlint:all -d out src\*.java` | Clean Java 21 compilation | PASS; no compiler warnings |
 | `java -cp out ToolboxTests` | Add/import integrity, error paths, CLI exit codes, exact history preservation, escaped/deterministic catalog | PASS; 79 assertions |
-| `java -cp out LocalManagerTests` | Import protections, cancellation, exclusions, collisions, source preservation, removed desktop-launch route | PASS; 64 checks |
+| `java -cp out LocalManagerTests` | Import protections plus removal confirmation/cancellation, unsafe paths, rollback, source preservation, and catalog updates | PASS; 87 checks (2026-10-31) |
 | `node tests\management_browser_tests.mjs` | Browser import/cancel workflow, both catalog links, wheel behavior and actual server URL | PASS; 89 workflow checks and 6 persistence checks |
 | `java -cp out Main catalog` then `java -cp out Main check` | Valid records/references and generated offline index | PASS; 3 projects, 0 errors, 27 warnings |
 | `tests\run_browser_tests.ps1` CSV harness | Supported CSV counts/errors, separate paste/file actions, filename/disabled state, stale reads | PASS; 92 checks |
